@@ -1,0 +1,67 @@
+# ==========================
+# Dependencies
+# ==========================
+node_modules/
+frontend/node_modules/
+server/node_modules/
+
+
+# ==========================
+# Environment Variables
+# ==========================
+.env
+frontend/.env
+server/.env
+
+
+# ==========================
+# Build Files
+# ==========================
+frontend/dist/
+server/dist/
+
+
+# ==========================
+# Prisma
+# ==========================
+server/generated/
+server/node_modules/.prisma/
+
+
+# ==========================
+# Logs
+# ==========================
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+
+# ==========================
+# OS Files
+# ==========================
+.DS_Store
+Thumbs.db
+
+
+# ==========================
+# Editor Files
+# ==========================
+.vscode/
+.idea/
+
+
+# ==========================
+# Temporary
+# ==========================
+*.tmp
+*.temp
+
+# AI Editor folders
+.agents/
+.claude/
+.windsurf/
+
+server/.agents/
+server/.claude/
+server/.windsurf/
