@@ -4,247 +4,125 @@ const {
   verifyAccessToken,
 } = require("../utils/jwt.util");
 
-
 // =====================================
 // AUTHENTICATE USER
 // =====================================
 
 async function authenticate(req, res, next) {
-
   try {
+    const authHeader = req.headers.authorization;
 
-
-    const authHeader =
-      req.headers.authorization;
-
-
+    // =====================================
+    // CHECK AUTHORIZATION HEADER
+    // =====================================
 
     if (!authHeader) {
-
       return res.status(401).json({
-
-        success:false,
-
-        message:"Authorization token required",
-
+        success: false,
+        message: "Authorization token required",
       });
-
     }
 
-
-
-
+    // =====================================
+    // CHECK BEARER FORMAT
+    // =====================================
 
     if (!authHeader.startsWith("Bearer ")) {
-
       return res.status(401).json({
-
-        success:false,
-
-        message:"Invalid authorization format",
-
+        success: false,
+        message: "Invalid authorization format",
       });
-
     }
 
+    // =====================================
+    // EXTRACT TOKEN
+    // =====================================
 
-
-
-
-    const token =
-      authHeader.split(" ")[1];
-
-
-
-
+    const token = authHeader.substring(7).trim();
 
     if (!token) {
-
       return res.status(401).json({
-
-        success:false,
-
-        message:"Access token required",
-
+        success: false,
+        message: "Access token required",
       });
-
     }
 
-
-
-
-
+    // =====================================
+    // VERIFY ACCESS TOKEN
+    // =====================================
 
     let decoded;
 
-
-
     try {
-
-
-      decoded =
-        verifyAccessToken(token);
-
-
-
-    } catch(error) {
-
+      decoded = verifyAccessToken(token);
+    } catch (error) {
+      console.error("ACCESS TOKEN ERROR:", error.message);
 
       return res.status(401).json({
-
-        success:false,
-
-        code:"TOKEN_EXPIRED",
-
-        message:"Invalid or expired token",
-
+        success: false,
+        code: "TOKEN_INVALID_OR_EXPIRED",
+        message: "Invalid or expired token",
       });
-
-
     }
 
+    // =====================================
+    // GET USER ID FROM TOKEN
+    // =====================================
 
+    const userId = decoded?.id;
 
-
-
-
-
-    const userId =
-      decoded.id;
-
-
-
-
-
-    if(!userId){
-
-
+    if (!userId) {
       return res.status(401).json({
-
-        success:false,
-
-        message:"Invalid token payload",
-
+        success: false,
+        message: "Invalid token payload",
       });
-
-
     }
 
+    // =====================================
+    // FETCH USER
+    // =====================================
 
+    const user = await prisma.user.findUnique({
+      where: {
+        id: userId,
+      },
+      select: {
+        id: true,
+        name: true,
+        email: true,
+        createdAt: true,
+        updatedAt: true,
+      },
+    });
 
+    // =====================================
+    // USER NOT FOUND
+    // =====================================
 
-
-
-
-
-    const user =
-      await prisma.user.findUnique({
-
-
-        where:{
-
-
-          id:userId,
-
-
-        },
-
-
-
-        select:{
-
-
-          id:true,
-
-
-          name:true,
-
-
-          email:true,
-
-
-          role:true,
-
-
-          createdAt:true,
-
-
-          updatedAt:true,
-
-
-        },
-
-
-      });
-
-
-
-
-
-
-
-    if(!user){
-
-
+    if (!user) {
       return res.status(401).json({
-
-
-        success:false,
-
-
-        message:"User not found",
-
-
+        success: false,
+        message: "User not found",
       });
-
-
     }
 
-
-
-
-
-
-
+    // =====================================
+    // ATTACH USER TO REQUEST
+    // =====================================
 
     req.user = user;
 
-
-
     next();
-
-
-
-
-
-  } catch(error) {
-
-
-
+  } catch (error) {
     console.error(
-
       "AUTH MIDDLEWARE ERROR:",
-
-      error.message
-
+      error?.message || error
     );
 
-
-
     next(error);
-
-
-
   }
-
 }
 
-
-
-
-
 module.exports = {
-
   authenticate,
-
 };

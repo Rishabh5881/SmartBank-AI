@@ -31,7 +31,8 @@ const BankCard = () => {
       }
 
       try {
-        setUser(JSON.parse(storedUser));
+        const parsedUser = JSON.parse(storedUser);
+        setUser(parsedUser);
       } catch (error) {
         console.error("BANK CARD USER ERROR:", error);
         setUser(null);
@@ -79,19 +80,24 @@ const BankCard = () => {
 
         const responseData = response?.data;
 
-        if (responseData?.success) {
-          const data = responseData?.data;
-
-          if (Array.isArray(data)) {
-            setAccount(data.length > 0 ? data[0] : null);
-          } else if (data && typeof data === "object") {
-            setAccount(data);
-          } else {
-            setAccount(null);
-          }
-        } else {
+        if (!responseData?.success) {
           setAccount(null);
+          return;
         }
+
+        const data = responseData?.data;
+
+        if (Array.isArray(data)) {
+          setAccount(data.length > 0 ? data[0] : null);
+          return;
+        }
+
+        if (data && typeof data === "object") {
+          setAccount(data);
+          return;
+        }
+
+        setAccount(null);
       } catch (error) {
         console.error(
           "BANK CARD ACCOUNT ERROR:",
@@ -110,6 +116,8 @@ const BankCard = () => {
 
     fetchAccount();
 
+    // Dashboard / transaction update ke baad account
+    // balance automatically refresh hoga.
     const handleDashboardUpdate = () => {
       fetchAccount();
     };
@@ -153,9 +161,7 @@ const BankCard = () => {
     account?.type ||
     "SAVINGS";
 
-  const currency =
-    account?.currency ||
-    "INR";
+  const currency = account?.currency || "INR";
 
   const rawBalance =
     account?.balance ??
@@ -176,17 +182,19 @@ const BankCard = () => {
   // CURRENCY FORMATTER
   // ==========================================
 
+  const normalizedCurrency = String(currency).toUpperCase();
+
   const currencySymbol =
-    String(currency).toUpperCase() === "USD"
+    normalizedCurrency === "USD"
       ? "$"
-      : String(currency).toUpperCase() === "EUR"
+      : normalizedCurrency === "EUR"
         ? "€"
-        : String(currency).toUpperCase() === "GBP"
+        : normalizedCurrency === "GBP"
           ? "£"
           : "₹";
 
   const formattedBalance = balance.toLocaleString(
-    String(currency).toUpperCase() === "INR"
+    normalizedCurrency === "INR"
       ? "en-IN"
       : "en-US",
     {
@@ -343,15 +351,19 @@ const BankCard = () => {
       ========================================== */}
 
       <div className="relative z-10 flex min-h-[298px] flex-col justify-between">
+
         {/* ========================================
             TOP SECTION
         ======================================== */}
 
         <div>
+
           {/* BRAND */}
 
           <div className="flex items-start justify-between">
+
             <div className="flex items-center gap-3">
+
               <div
                 className="
                   flex
@@ -375,6 +387,7 @@ const BankCard = () => {
               </div>
 
               <div>
+
                 <p
                   className="
                     text-[8px]
@@ -401,12 +414,14 @@ const BankCard = () => {
                     AI
                   </span>
                 </h2>
+
               </div>
             </div>
 
             {/* VISA */}
 
             <div className="text-right">
+
               <p
                 className="
                   text-lg
@@ -429,12 +444,14 @@ const BankCard = () => {
               >
                 Platinum
               </p>
+
             </div>
           </div>
 
           {/* CHIP + CONTACTLESS */}
 
           <div className="mt-5 flex items-center justify-between">
+
             <div
               className="
                 relative
@@ -538,7 +555,9 @@ const BankCard = () => {
           {/* ACCOUNT NUMBER */}
 
           <div className="mt-4">
+
             <div className="flex items-center justify-between gap-3">
+
               <p
                 className="
                   text-[8px]
@@ -569,6 +588,7 @@ const BankCard = () => {
               >
                 {formattedAccountType}
               </span>
+
             </div>
 
             <motion.p
@@ -594,6 +614,7 @@ const BankCard = () => {
                 ? "****  ****  ****"
                 : formattedAccountNumber}
             </motion.p>
+
           </div>
         </div>
 
@@ -602,11 +623,15 @@ const BankCard = () => {
         ======================================== */}
 
         <div className="mt-5">
+
           {/* BALANCE */}
 
           <div className="flex items-end justify-between gap-4">
+
             <div className="min-w-0">
+
               <div className="flex items-center gap-2">
+
                 <p
                   className="
                     text-[8px]
@@ -644,9 +669,11 @@ const BankCard = () => {
                     <Eye size={11} />
                   )}
                 </button>
+
               </div>
 
               <div className="mt-0.5 flex items-baseline gap-2">
+
                 <span
                   className="
                     text-[10px]
@@ -654,7 +681,7 @@ const BankCard = () => {
                     text-white/45
                   "
                 >
-                  {currency}
+                  {normalizedCurrency}
                 </span>
 
                 <motion.span
@@ -680,6 +707,7 @@ const BankCard = () => {
                       ? `${currencySymbol}${formattedBalance}`
                       : `${currencySymbol}******`}
                 </motion.span>
+
               </div>
             </div>
 
@@ -702,6 +730,7 @@ const BankCard = () => {
                 }
               `}
             >
+
               <span
                 className={`
                   h-1.5
@@ -733,6 +762,7 @@ const BankCard = () => {
                   ? "Active"
                   : formattedStatus}
               </span>
+
             </div>
           </div>
 
@@ -743,9 +773,11 @@ const BankCard = () => {
           {/* FOOTER */}
 
           <div className="flex items-center justify-between gap-4">
+
             {/* CARD HOLDER */}
 
             <div className="min-w-0">
+
               <p
                 className="
                   text-[7px]
@@ -773,6 +805,7 @@ const BankCard = () => {
               >
                 {userName}
               </p>
+
             </div>
 
             {/* SECURITY */}
@@ -808,6 +841,7 @@ const BankCard = () => {
                 Secured
               </span>
             </div>
+
           </div>
         </div>
       </div>

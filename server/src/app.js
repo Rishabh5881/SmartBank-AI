@@ -5,6 +5,9 @@ const helmet = require("helmet");
 const rateLimit = require("express-rate-limit");
 const morgan = require("morgan");
 
+// =====================
+// ROUTES
+// =====================
 
 const authRoutes = require("./routes/auth.routes");
 const accountRoutes = require("./routes/account.routes");
@@ -13,15 +16,15 @@ const userRoutes = require("./routes/user.routes");
 const analyticsRoutes = require("./routes/analytics.routes");
 const insightRoutes = require("./routes/insight.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
+const cardRoutes = require("./routes/card.routes");
 
+// =====================
+// ERROR MIDDLEWARE
+// =====================
 
 const errorMiddleware = require("./middlewares/error.middleware");
 
-
 const app = express();
-
-
-
 
 // =====================
 // SECURITY MIDDLEWARES
@@ -29,88 +32,50 @@ const app = express();
 
 app.use(helmet());
 
-
-
 const apiLimiter = rateLimit({
-
-    windowMs: 15 * 60 * 1000,
-
-    max: 200,
-
-    message: {
-
-        success:false,
-
-        message:"Too many requests, please try again later"
-
-    }
-
+  windowMs: 15 * 60 * 1000,
+  max: 200,
+  message: {
+    success: false,
+    message: "Too many requests, please try again later",
+  },
 });
 
-
 app.use("/api", apiLimiter);
-
-
-
 
 // =====================
 // LOGGER
 // =====================
 
-app.use(
-    morgan("dev")
-);
-
-
-
+app.use(morgan("dev"));
 
 // =====================
 // CORS CONFIG
 // =====================
 
 const allowedOrigins = [
-
-    "http://localhost:5173"
-
+  "http://localhost:5173",
 ];
 
-
 app.use(
-    cors({
+  cors({
+    origin: function (origin, callback) {
+      if (!origin) {
+        return callback(null, true);
+      }
 
-        origin:function(origin,callback){
+      if (allowedOrigins.includes(origin)) {
+        return callback(null, true);
+      }
 
+      return callback(
+        new Error("Not allowed by CORS")
+      );
+    },
 
-            if(!origin){
-
-                return callback(null,true);
-
-            }
-
-
-            if(allowedOrigins.includes(origin)){
-
-                return callback(null,true);
-
-            }
-
-
-            return callback(
-                new Error("Not allowed by CORS")
-            );
-
-
-        },
-
-
-        credentials:true,
-
-    })
+    credentials: true,
+  })
 );
-
-
-
-
 
 // =====================
 // BODY PARSER
@@ -118,112 +83,83 @@ app.use(
 
 app.use(express.json());
 
-
 app.use(
-    express.urlencoded({
-
-        extended:true
-
-    })
+  express.urlencoded({
+    extended: true,
+  })
 );
 
-
 app.use(cookieParser());
-
-
-
-
 
 // =====================
 // HEALTH CHECK
 // =====================
 
-app.get("/health",(req,res)=>{
-
-
-    res.status(200).json({
-
-        success:true,
-
-        message:"SmartBank AI API is healthy"
-
-    });
-
-
+app.get("/health", (req, res) => {
+  res.status(200).json({
+    success: true,
+    message: "SmartBank AI API is healthy",
+  });
 });
 
-
-
-
-
 // =====================
-// ROUTES
+// API ROUTES
 // =====================
 
 app.use(
-    "/api/auth",
-    authRoutes
+  "/api/auth",
+  authRoutes
 );
-
 
 app.use(
-    "/api/accounts",
-    accountRoutes
+  "/api/accounts",
+  accountRoutes
 );
-
 
 app.use(
-    "/api/transactions",
-    transactionRoutes
+  "/api/transactions",
+  transactionRoutes
 );
-
 
 app.use(
-    "/api/users",
-    userRoutes
+  "/api/users",
+  userRoutes
 );
-
 
 app.use(
-    "/api/analytics",
-    analyticsRoutes
+  "/api/analytics",
+  analyticsRoutes
 );
-
 
 app.use(
-    "/api/insights",
-    insightRoutes
+  "/api/insights",
+  insightRoutes
 );
-
 
 app.use(
-    "/api/dashboard",
-    dashboardRoutes
+  "/api/dashboard",
+  dashboardRoutes
 );
 
+// =====================
+// CARD ROUTES
+// =====================
 
-
-
+app.use(
+  "/api/cards",
+  cardRoutes
+);
 
 // =====================
 // 404
 // =====================
 
-app.use((req,res)=>{
-
-    res.status(404).json({
-
-        success:false,
-
-        message:"Route not found"
-
-    });
-
+app.use((req, res) => {
+  res.status(404).json({
+    success: false,
+    message: "Route not found",
+  });
 });
-
-
-
-
 
 // =====================
 // ERROR HANDLER
@@ -231,7 +167,8 @@ app.use((req,res)=>{
 
 app.use(errorMiddleware);
 
-
-
+// =====================
+// EXPORT
+// =====================
 
 module.exports = app;

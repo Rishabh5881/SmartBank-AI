@@ -1,5 +1,5 @@
 
-import { useEffect, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   Link,
   useLocation,
@@ -20,7 +20,11 @@ import {
   HandCoins,
   Bell,
   ShieldCheck,
+  ShieldAlert,
 } from "lucide-react";
+import axios from "axios";
+
+const API_BASE_URL = "http://localhost:5000/api";
 
 const Navbar = () => {
   const navigate = useNavigate();
@@ -31,6 +35,7 @@ const Navbar = () => {
   const [open, setOpen] = useState(false);
   const [mobileOpen, setMobileOpen] = useState(false);
   const [scrolled, setScrolled] = useState(false);
+  const [loggingOut, setLoggingOut] = useState(false);
 
   // ==========================================
   // LOAD USER
@@ -39,8 +44,9 @@ const Navbar = () => {
   useEffect(() => {
     const loadUser = () => {
       const storedUser = localStorage.getItem("user");
+      const token = localStorage.getItem("token");
 
-      if (!storedUser) {
+      if (!storedUser || !token) {
         setUser(null);
         setUserLoaded(true);
         return;
@@ -48,9 +54,29 @@ const Navbar = () => {
 
       try {
         const parsedUser = JSON.parse(storedUser);
-        setUser(parsedUser);
+
+        if (
+          parsedUser &&
+          typeof parsedUser === "object" &&
+          !Array.isArray(parsedUser) &&
+          parsedUser.id &&
+          parsedUser.email
+        ) {
+          setUser(parsedUser);
+        } else {
+          localStorage.removeItem("user");
+          localStorage.removeItem("token");
+          setUser(null);
+        }
       } catch (error) {
-        console.error("NAVBAR USER DATA ERROR:", error);
+        console.error(
+          "NAVBAR USER DATA ERROR:",
+          error
+        );
+
+        localStorage.removeItem("user");
+        localStorage.removeItem("token");
+
         setUser(null);
       }
 
@@ -59,12 +85,26 @@ const Navbar = () => {
 
     loadUser();
 
-    window.addEventListener("userUpdated", loadUser);
-    window.addEventListener("storage", loadUser);
+    window.addEventListener(
+      "userUpdated",
+      loadUser
+    );
+
+    window.addEventListener(
+      "storage",
+      loadUser
+    );
 
     return () => {
-      window.removeEventListener("userUpdated", loadUser);
-      window.removeEventListener("storage", loadUser);
+      window.removeEventListener(
+        "userUpdated",
+        loadUser
+      );
+
+      window.removeEventListener(
+        "storage",
+        loadUser
+      );
     };
   }, []);
 
@@ -79,12 +119,19 @@ const Navbar = () => {
 
     handleScroll();
 
-    window.addEventListener("scroll", handleScroll, {
-      passive: true,
-    });
+    window.addEventListener(
+      "scroll",
+      handleScroll,
+      {
+        passive: true,
+      }
+    );
 
     return () => {
-      window.removeEventListener("scroll", handleScroll);
+      window.removeEventListener(
+        "scroll",
+        handleScroll
+      );
     };
   }, []);
 
@@ -96,58 +143,6 @@ const Navbar = () => {
     setOpen(false);
     setMobileOpen(false);
   }, [location.pathname]);
-
-  // ==========================================
-  // LOGOUT
-  // ==========================================
-
-  const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-
-    setUser(null);
-    setOpen(false);
-    setMobileOpen(false);
-
-    window.dispatchEvent(new Event("userUpdated"));
-
-    navigate("/");
-  };
-
-  // ==========================================
-  // AI NAVIGATION
-  // ==========================================
-
-  const handleAI = () => {
-    setOpen(false);
-    setMobileOpen(false);
-
-    if (location.pathname === "/") {
-      const aiSection = document.getElementById("ai");
-
-      if (aiSection) {
-        aiSection.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
-
-      return;
-    }
-
-    navigate("/");
-
-    setTimeout(() => {
-      const aiSection = document.getElementById("ai");
-
-      if (aiSection) {
-        aiSection.scrollIntoView({
-          behavior: "smooth",
-          block: "start",
-        });
-      }
-    }, 500);
-  };
 
   // ==========================================
   // USER DATA
@@ -162,7 +157,155 @@ const Navbar = () => {
     userName.split(" ")[0] || "User";
 
   const avatar =
-    firstName.charAt(0).toUpperCase() || "U";
+    firstName.charAt(0).toUpperCase() ||
+    "U";
+
+  const userRole = String(
+    user?.role || "CUSTOMER"
+  ).toUpperCase();
+
+  const isAdmin =
+    userRole === "ADMIN" ||
+    userRole === "SUPER_ADMIN";
+
+  // ==========================================
+  // LOGOUT
+  // ==========================================
+
+  const handleLogout = async () => {
+    if (loggingOut) {
+      return;
+    }
+
+    try {
+      setLoggingOut(true);
+
+      const token =
+        localStorage.getItem("token");
+
+      // ----------------------------------------
+      // BACKEND LOGOUT
+      // ----------------------------------------
+
+      try {
+        await axios.post(
+          `${API_BASE_URL}/auth/logout`,
+          {},
+          {
+            withCredentials: true,
+            headers: token
+              ? {
+                  Authorization: `Bearer ${token}`,
+                }
+              : {},
+          }
+        );
+      } catch (backendError) {
+        /*
+         * Backend logout failure must NOT trap
+         * the user inside the authenticated UI.
+         * Local session is cleared regardless.
+         */
+        console.error(
+          "BACKEND LOGOUT ERROR:",
+          backendError?.response?.data ||
+            backendError?.message ||
+            backendError
+        );
+      }
+
+      // ----------------------------------------
+      // CLEAR LOCAL SESSION
+      // ----------------------------------------
+
+      localStorage.removeItem("token");
+      localStorage.removeItem("user");
+
+      // ----------------------------------------
+      // RESET NAVBAR
+      // ----------------------------------------
+
+      setUser(null);
+      setOpen(false);
+      setMobileOpen(false);
+
+      window.dispatchEvent(
+        new Event("userUpdated")
+      );
+
+      // ----------------------------------------
+      // REDIRECT HOME
+      // ----------------------------------------
+
+      navigate("/", {
+        replace: true,
+      });
+    } finally {
+      setLoggingOut(false);
+    }
+  };
+
+  // ==========================================
+  // HOME SECTION NAVIGATION
+  // ==========================================
+
+  const handleSectionNavigation = (sectionId) => {
+    setOpen(false);
+    setMobileOpen(false);
+
+    if (location.pathname === "/") {
+      const section =
+        document.getElementById(sectionId);
+
+      if (section) {
+        section.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+
+      return;
+    }
+
+    navigate(`/#${sectionId}`);
+  };
+
+  // ==========================================
+  // AI NAVIGATION
+  // ==========================================
+
+  const handleAI = () => {
+    setOpen(false);
+    setMobileOpen(false);
+
+    if (location.pathname === "/") {
+      const aiSection =
+        document.getElementById("ai");
+
+      if (aiSection) {
+        aiSection.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+
+      return;
+    }
+
+    navigate("/");
+
+    setTimeout(() => {
+      const aiSection =
+        document.getElementById("ai");
+
+      if (aiSection) {
+        aiSection.scrollIntoView({
+          behavior: "smooth",
+          block: "start",
+        });
+      }
+    }, 500);
+  };
 
   // ==========================================
   // ACTIVE ROUTE
@@ -179,69 +322,82 @@ const Navbar = () => {
   const publicLinks = [
     {
       label: "Home",
-      href: "#home",
+      section: "home",
     },
     {
       label: "Features",
-      href: "#features",
+      section: "features",
     },
     {
       label: "Security",
-      href: "#security",
+      section: "security",
     },
     {
       label: "Analytics",
-      href: "#analytics",
+      section: "analytics",
     },
     {
       label: "Pricing",
-      href: "#pricing",
+      section: "pricing",
     },
   ];
 
   // ==========================================
-  // DASHBOARD NAVIGATION
+  // AUTH NAVIGATION
   // ==========================================
 
-  const dashboardLinks = [
-    {
-      label: "Dashboard",
-      path: "/dashboard",
-      icon: LayoutDashboard,
-    },
-    {
-      label: "Accounts",
-      path: "/accounts",
-      icon: WalletCards,
-    },
-    {
-      label: "Transactions",
-      path: "/transactions",
-      icon: ArrowLeftRight,
-    },
-    {
-      label: "Cards",
-      path: "/cards",
-      icon: CreditCard,
-    },
-    {
-      label: "Loans",
-      path: "/loans",
-      icon: HandCoins,
-    },
-    {
-      label: "Notifications",
-      path: "/notifications",
-      icon: Bell,
-    },
-  ];
+  const dashboardLinks = useMemo(() => {
+    const links = [
+      {
+        label: "Dashboard",
+        path: "/dashboard",
+        icon: LayoutDashboard,
+      },
+      {
+        label: "Accounts",
+        path: "/accounts",
+        icon: WalletCards,
+      },
+      {
+        label: "Transactions",
+        path: "/transactions",
+        icon: ArrowLeftRight,
+      },
+      {
+        label: "Cards",
+        path: "/cards",
+        icon: CreditCard,
+      },
+      {
+        label: "Loans",
+        path: "/loans",
+        icon: HandCoins,
+      },
+      {
+        label: "Notifications",
+        path: "/notifications",
+        icon: Bell,
+      },
+    ];
+
+    if (isAdmin) {
+      links.push({
+        label: "Admin",
+        path: "/admin",
+        icon: ShieldAlert,
+      });
+    }
+
+    return links;
+  }, [isAdmin]);
 
   // ==========================================
-  // NAVBAR
+  // RENDER
   // ==========================================
 
   return (
     <nav className="fixed left-0 right-0 top-0 z-[100]">
+
       {/* ========================================
           BACKDROP
       ======================================== */}
@@ -265,6 +421,7 @@ const Navbar = () => {
       ======================================== */}
 
       <div className="relative mx-auto flex h-[76px] max-w-[1500px] items-center px-4 sm:px-6 lg:px-8">
+
         {/* ======================================
             LOGO
         ====================================== */}
@@ -272,9 +429,12 @@ const Navbar = () => {
         <Link
           to="/"
           className="group flex shrink-0 items-center"
+          aria-label="SmartBank AI Home"
         >
           <div className="flex items-center gap-2.5">
+
             <div className="relative flex h-9 w-9 items-center justify-center rounded-xl border border-cyan-400/15 bg-gradient-to-br from-blue-600/20 to-cyan-400/10 shadow-lg shadow-cyan-500/5 transition duration-300 group-hover:border-cyan-400/30 group-hover:shadow-cyan-400/10">
+
               <ShieldCheck
                 size={20}
                 strokeWidth={2}
@@ -282,9 +442,11 @@ const Navbar = () => {
               />
 
               <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#020617] bg-emerald-400 shadow-sm shadow-emerald-400/50" />
+
             </div>
 
             <div className="whitespace-nowrap text-xl font-bold tracking-tight">
+
               <span className="text-white">
                 SmartBank
               </span>
@@ -292,7 +454,9 @@ const Navbar = () => {
               <span className="text-cyan-400">
                 AI
               </span>
+
             </div>
+
           </div>
         </Link>
 
@@ -302,15 +466,22 @@ const Navbar = () => {
 
         {userLoaded && !user && (
           <div className="hidden flex-1 items-center justify-center lg:flex">
+
             <div className="flex items-center gap-1 rounded-2xl border border-white/[0.05] bg-white/[0.015] p-1">
+
               {publicLinks.map((item) => (
-                <a
+                <button
                   key={item.label}
-                  href={item.href}
+                  type="button"
+                  onClick={() =>
+                    handleSectionNavigation(
+                      item.section
+                    )
+                  }
                   className="relative rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-300 transition-all duration-200 hover:bg-white/[0.05] hover:text-white"
                 >
                   {item.label}
-                </a>
+                </button>
               ))}
 
               <button
@@ -326,7 +497,9 @@ const Navbar = () => {
 
                 AI
               </button>
+
             </div>
+
           </div>
         )}
 
@@ -335,11 +508,18 @@ const Navbar = () => {
         ====================================== */}
 
         {userLoaded && user && (
-          <div className="hidden min-w-0 flex-1 items-center justify-center px-4 lg:flex">
+          <div className="hidden min-w-0 flex-1 items-center justify-center px-3 lg:flex">
+
             <div className="flex max-w-full items-center gap-1 overflow-x-auto rounded-2xl border border-white/[0.05] bg-white/[0.015] p-1 scrollbar-none">
+
               {dashboardLinks.map((item) => {
                 const Icon = item.icon;
-                const active = isActive(item.path);
+
+                const active =
+                  isActive(item.path);
+
+                const adminLink =
+                  item.path === "/admin";
 
                 return (
                   <Link
@@ -347,7 +527,11 @@ const Navbar = () => {
                     to={item.path}
                     className={`relative flex shrink-0 items-center gap-1.5 rounded-xl px-3 py-2.5 text-sm font-medium transition-all duration-200 ${
                       active
-                        ? "bg-cyan-400/[0.08] text-cyan-400"
+                        ? adminLink
+                          ? "bg-purple-400/[0.08] text-purple-400"
+                          : "bg-cyan-400/[0.08] text-cyan-400"
+                        : adminLink
+                        ? "text-purple-300/70 hover:bg-purple-400/[0.05] hover:text-purple-300"
                         : "text-slate-300 hover:bg-white/[0.05] hover:text-white"
                     }`}
                   >
@@ -358,7 +542,11 @@ const Navbar = () => {
                       }
                       className={
                         active
-                          ? "text-cyan-400"
+                          ? adminLink
+                            ? "text-purple-400"
+                            : "text-cyan-400"
+                          : adminLink
+                          ? "text-purple-400/60"
                           : "text-slate-500"
                       }
                     />
@@ -368,7 +556,11 @@ const Navbar = () => {
                     {active && (
                       <motion.span
                         layoutId="navbar-active"
-                        className="absolute bottom-0 left-1/2 h-[2px] w-5 -translate-x-1/2 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/60"
+                        className={`absolute bottom-0 left-1/2 h-[2px] w-5 -translate-x-1/2 rounded-full ${
+                          adminLink
+                            ? "bg-purple-400 shadow-lg shadow-purple-400/60"
+                            : "bg-cyan-400 shadow-lg shadow-cyan-400/60"
+                        }`}
                         transition={{
                           type: "spring",
                           stiffness: 400,
@@ -376,10 +568,13 @@ const Navbar = () => {
                         }}
                       />
                     )}
+
                   </Link>
                 );
               })}
+
             </div>
+
           </div>
         )}
 
@@ -388,6 +583,7 @@ const Navbar = () => {
         ====================================== */}
 
         <div className="ml-auto flex shrink-0 items-center gap-2.5">
+
           {/* ====================================
               LOGGED OUT
           ==================================== */}
@@ -420,21 +616,28 @@ const Navbar = () => {
 
           {userLoaded && user && (
             <div className="relative hidden sm:block">
+
               <button
                 type="button"
                 onClick={() =>
                   setOpen((value) => !value)
                 }
+                disabled={loggingOut}
+                aria-expanded={open}
+                aria-haspopup="menu"
                 className={`flex items-center gap-2 rounded-xl border p-1.5 pr-2 transition-all duration-200 ${
                   open
                     ? "border-cyan-400/20 bg-cyan-400/[0.06]"
                     : "border-white/[0.06] bg-white/[0.025] hover:border-white/[0.12] hover:bg-white/[0.05]"
-                }`}
+                } disabled:cursor-not-allowed disabled:opacity-60`}
               >
+
                 <div className="relative flex h-9 w-9 items-center justify-center rounded-lg bg-gradient-to-br from-blue-600 to-cyan-400 text-sm font-bold text-white shadow-lg shadow-blue-500/20">
+
                   {avatar}
 
                   <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#020617] bg-emerald-400" />
+
                 </div>
 
                 <span className="hidden max-w-[100px] truncate text-sm font-medium text-white md:block">
@@ -449,6 +652,7 @@ const Navbar = () => {
                       : ""
                   }`}
                 />
+
               </button>
 
               {/* ==================================
@@ -477,51 +681,98 @@ const Navbar = () => {
                       duration: 0.18,
                     }}
                     className="absolute right-0 top-[calc(100%+10px)] w-60 overflow-hidden rounded-2xl border border-white/10 bg-slate-900/95 p-2 shadow-2xl shadow-black/40 backdrop-blur-2xl"
+                    role="menu"
                   >
+
                     <div className="mb-1 rounded-xl bg-white/[0.035] p-3">
+
                       <div className="flex items-center gap-3">
+
                         <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-400 font-bold text-white">
+
                           {avatar}
 
                           <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-slate-900 bg-emerald-400" />
+
                         </div>
 
                         <div className="min-w-0">
+
                           <p className="truncate text-sm font-semibold text-white">
                             {userName}
                           </p>
 
                           <p className="mt-0.5 text-[10px] uppercase tracking-wider text-emerald-400">
-                            Account Active
+                            {isAdmin
+                              ? "Administrator"
+                              : "Account Active"}
                           </p>
+
                         </div>
+
                       </div>
+
                     </div>
 
                     <Link
                       to="/profile"
-                      onClick={() => setOpen(false)}
+                      onClick={() =>
+                        setOpen(false)
+                      }
                       className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
+                      role="menuitem"
                     >
+
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-white/[0.04]">
+
                         <User
                           size={16}
                           className="text-slate-400"
                         />
+
                       </div>
 
                       Profile
+
                     </Link>
 
+                    {isAdmin && (
+                      <Link
+                        to="/admin"
+                        onClick={() =>
+                          setOpen(false)
+                        }
+                        className="flex items-center gap-3 rounded-xl px-3 py-3 text-sm text-purple-300 transition hover:bg-purple-400/[0.06] hover:text-purple-200"
+                        role="menuitem"
+                      >
+
+                        <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-purple-400/10">
+
+                          <ShieldAlert
+                            size={16}
+                            className="text-purple-400"
+                          />
+
+                        </div>
+
+                        Admin Console
+
+                      </Link>
+                    )}
+
                     <div className="flex items-center gap-3 rounded-xl px-3 py-3">
+
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-emerald-400/10">
+
                         <ShieldCheck
                           size={16}
                           className="text-emerald-400"
                         />
+
                       </div>
 
                       <div>
+
                         <p className="text-xs font-medium text-slate-300">
                           Secure Session
                         </p>
@@ -529,7 +780,9 @@ const Navbar = () => {
                         <p className="mt-0.5 text-[10px] text-slate-600">
                           Protected account
                         </p>
+
                       </div>
+
                     </div>
 
                     <div className="my-1 border-t border-white/[0.06]" />
@@ -537,17 +790,26 @@ const Navbar = () => {
                     <button
                       type="button"
                       onClick={handleLogout}
-                      className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-red-400 transition hover:bg-red-500/10"
+                      disabled={loggingOut}
+                      className="flex w-full items-center gap-3 rounded-xl px-3 py-3 text-sm text-red-400 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                     >
+
                       <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-red-500/10">
+
                         <LogOut size={16} />
+
                       </div>
 
-                      Logout
+                      {loggingOut
+                        ? "Logging out..."
+                        : "Logout"}
+
                     </button>
+
                   </motion.div>
                 )}
               </AnimatePresence>
+
             </div>
           )}
 
@@ -558,14 +820,21 @@ const Navbar = () => {
           <button
             type="button"
             onClick={() =>
-              setMobileOpen((value) => !value)
+              setMobileOpen(
+                (value) => !value
+              )
             }
             className={`flex h-10 w-10 items-center justify-center rounded-xl border transition lg:hidden ${
               mobileOpen
                 ? "border-cyan-400/20 bg-cyan-400/10 text-cyan-400"
                 : "border-white/[0.07] bg-white/[0.03] text-slate-300 hover:text-white"
             }`}
-            aria-label="Toggle navigation"
+            aria-label={
+              mobileOpen
+                ? "Close navigation"
+                : "Open navigation"
+            }
+            aria-expanded={mobileOpen}
           >
             {mobileOpen ? (
               <X size={19} />
@@ -573,6 +842,7 @@ const Navbar = () => {
               <Menu size={19} />
             )}
           </button>
+
         </div>
       </div>
 
@@ -600,24 +870,29 @@ const Navbar = () => {
             }}
             className="overflow-hidden border-t border-white/[0.06] bg-[#020617]/95 backdrop-blur-2xl lg:hidden"
           >
+
             <div className="mx-auto max-w-[1500px] px-4 pb-5 pt-3 sm:px-6">
+
               {/* ====================================
                   PUBLIC MOBILE
               ==================================== */}
 
               {userLoaded && !user && (
                 <>
+
                   {publicLinks.map((item) => (
-                    <a
+                    <button
                       key={item.label}
-                      href={item.href}
+                      type="button"
                       onClick={() =>
-                        setMobileOpen(false)
+                        handleSectionNavigation(
+                          item.section
+                        )
                       }
-                      className="block rounded-xl px-4 py-3 text-sm font-medium text-slate-300 transition hover:bg-white/[0.05] hover:text-white"
+                      className="block w-full rounded-xl px-4 py-3 text-left text-sm font-medium text-slate-300 transition hover:bg-white/[0.05] hover:text-white"
                     >
                       {item.label}
-                    </a>
+                    </button>
                   ))}
 
                   <button
@@ -632,12 +907,13 @@ const Navbar = () => {
                   <div className="my-3 border-t border-white/[0.06]" />
 
                   <div className="grid grid-cols-2 gap-2">
+
                     <Link
                       to="/login"
                       onClick={() =>
                         setMobileOpen(false)
                       }
-                      className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-center text-sm font-semibold text-slate-300"
+                      className="rounded-xl border border-white/[0.08] bg-white/[0.03] px-4 py-3 text-center text-sm font-semibold text-slate-300 transition hover:bg-white/[0.06] hover:text-white"
                     >
                       Login
                     </Link>
@@ -647,11 +923,13 @@ const Navbar = () => {
                       onClick={() =>
                         setMobileOpen(false)
                       }
-                      className="rounded-xl bg-gradient-to-r from-blue-600 to-cyan-400 px-4 py-3 text-center text-sm font-semibold text-white"
+                      className="rounded-xl bg-gradient-to-r from-blue-600 to-cyan-400 px-4 py-3 text-center text-sm font-semibold text-white transition hover:-translate-y-0.5"
                     >
                       Let's Start
                     </Link>
+
                   </div>
+
                 </>
               )}
 
@@ -661,27 +939,41 @@ const Navbar = () => {
 
               {userLoaded && user && (
                 <>
+
                   <div className="mb-3 flex items-center gap-3 rounded-2xl border border-white/[0.06] bg-white/[0.03] p-3">
+
                     <div className="relative flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-blue-600 to-cyan-400 font-bold text-white">
+
                       {avatar}
 
                       <span className="absolute -bottom-0.5 -right-0.5 h-2.5 w-2.5 rounded-full border-2 border-[#020617] bg-emerald-400" />
+
                     </div>
 
-                    <div>
-                      <p className="text-sm font-semibold text-white">
+                    <div className="min-w-0">
+
+                      <p className="truncate text-sm font-semibold text-white">
                         {userName}
                       </p>
 
                       <p className="mt-0.5 text-[10px] uppercase tracking-wider text-emerald-400">
-                        Active Account
+                        {isAdmin
+                          ? "Administrator"
+                          : "Active Account"}
                       </p>
+
                     </div>
+
                   </div>
 
                   {dashboardLinks.map((item) => {
                     const Icon = item.icon;
-                    const active = isActive(item.path);
+
+                    const active =
+                      isActive(item.path);
+
+                    const adminLink =
+                      item.path === "/admin";
 
                     return (
                       <Link
@@ -692,20 +984,30 @@ const Navbar = () => {
                         }
                         className={`flex items-center gap-3 rounded-xl px-4 py-3 text-sm font-medium transition ${
                           active
-                            ? "bg-cyan-400/[0.08] text-cyan-400"
+                            ? adminLink
+                              ? "bg-purple-400/[0.08] text-purple-400"
+                              : "bg-cyan-400/[0.08] text-cyan-400"
+                            : adminLink
+                            ? "text-purple-300/70 hover:bg-purple-400/[0.05] hover:text-purple-300"
                             : "text-slate-300 hover:bg-white/[0.05] hover:text-white"
                         }`}
                       >
+
                         <Icon
                           size={17}
                           className={
                             active
-                              ? "text-cyan-400"
+                              ? adminLink
+                                ? "text-purple-400"
+                                : "text-cyan-400"
+                              : adminLink
+                              ? "text-purple-400/60"
                               : "text-slate-500"
                           }
                         />
 
                         {item.label}
+
                       </Link>
                     );
                   })}
@@ -726,17 +1028,26 @@ const Navbar = () => {
                   <button
                     type="button"
                     onClick={handleLogout}
-                    className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold text-red-400 transition hover:bg-red-500/10"
+                    disabled={loggingOut}
+                    className="flex w-full items-center gap-3 rounded-xl px-4 py-3 text-left text-sm font-semibold text-red-400 transition hover:bg-red-500/10 disabled:cursor-not-allowed disabled:opacity-50"
                   >
+
                     <LogOut size={17} />
-                    Logout
+
+                    {loggingOut
+                      ? "Logging out..."
+                      : "Logout"}
+
                   </button>
+
                 </>
               )}
+
             </div>
           </motion.div>
         )}
       </AnimatePresence>
+
     </nav>
   );
 };

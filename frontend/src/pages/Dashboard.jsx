@@ -34,9 +34,31 @@ const Dashboard = () => {
   const [user, setUser] = useState(null);
   const [userLoading, setUserLoading] = useState(true);
 
+  const [accounts, setAccounts] = useState([]);
+  const [accountsLoading, setAccountsLoading] = useState(true);
+  const [accountsError, setAccountsError] = useState(false);
+
   const [transactions, setTransactions] = useState([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [transactionsError, setTransactionsError] = useState(false);
+
+  // ==========================================
+  // FINANCIAL SUMMARY
+  // ==========================================
+
+  const [financialSummary, setFinancialSummary] = useState({
+    totalBalance: 0,
+    monthlyIncome: 0,
+    monthlyExpense: 0,
+    previousMonthIncome: 0,
+    previousMonthExpense: 0,
+    incomeGrowth: null,
+    expenseGrowth: null,
+    netCashFlow: 0,
+    previousNetCashFlow: 0,
+  });
+
+  const [summaryLoading, setSummaryLoading] = useState(true);
 
   // ==========================================
   // LOAD AUTHENTICATED USER
@@ -58,15 +80,6 @@ const Dashboard = () => {
 
           return;
         }
-
-        /*
-         * User profile is fetched from backend.
-         * Financial/profile data is not stored permanently
-         * inside localStorage.
-         *
-         * Expected backend endpoint:
-         * GET /auth/me
-         */
 
         const response = await api.get("/auth/me");
 
@@ -141,6 +154,83 @@ const Dashboard = () => {
   };
 
   // ==========================================
+  // FETCH ACCOUNTS
+  // ==========================================
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchAccounts = async () => {
+      try {
+        setAccountsLoading(true);
+        setAccountsError(false);
+
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+          if (mounted) {
+            setAccounts([]);
+            setAccountsLoading(false);
+          }
+
+          return;
+        }
+
+        const response = await api.get("/accounts");
+
+        if (!mounted) {
+          return;
+        }
+
+        if (response.data?.success) {
+          const data = Array.isArray(response.data?.data)
+            ? response.data.data
+            : [];
+
+          setAccounts(data);
+        } else {
+          setAccounts([]);
+          setAccountsError(true);
+        }
+      } catch (error) {
+        console.error(
+          "ACCOUNT FETCH ERROR:",
+          error?.response?.data || error?.message
+        );
+
+        if (mounted) {
+          setAccounts([]);
+          setAccountsError(true);
+        }
+      } finally {
+        if (mounted) {
+          setAccountsLoading(false);
+        }
+      }
+    };
+
+    fetchAccounts();
+
+    const handleDashboardUpdate = () => {
+      fetchAccounts();
+    };
+
+    window.addEventListener(
+      "dashboardUpdated",
+      handleDashboardUpdate
+    );
+
+    return () => {
+      mounted = false;
+
+      window.removeEventListener(
+        "dashboardUpdated",
+        handleDashboardUpdate
+      );
+    };
+  }, []);
+
+  // ==========================================
   // FETCH TRANSACTIONS
   // ==========================================
 
@@ -174,7 +264,7 @@ const Dashboard = () => {
             ? response.data.data
             : [];
 
-          setTransactions(data.slice(0, 5));
+          setTransactions(data);
         } else {
           setTransactions([]);
           setTransactionsError(true);
@@ -218,6 +308,296 @@ const Dashboard = () => {
   }, []);
 
   // ==========================================
+  // FINANCIAL SUMMARY CALCULATION
+  // ==========================================
+
+  useEffect(() => {
+    if (accountsLoading || transactionsLoading) {
+      return;
+    }
+
+    const calculateSummary = () => {
+      // ------------------------------------------
+      // TOTAL BALANCE
+      // ------------------------------------------
+
+      const totalBalance = accounts.reduce((total, account) => {
+        return total + Number(account?.balance || 0);
+      }, 0);
+
+      // ------------------------------------------
+      // USER ACCOUNT NUMBERS
+      // ------------------------------------------
+
+      const userAccountNumbers = new Set(
+        accounts
+          .map((account) => account?.accountNumber)
+          .filter(Boolean)
+      );
+
+      // ------------------------------------------
+      // CURRENT / PREVIOUS MONTH
+      // ------------------------------------------
+
+      const now = new Date();
+
+      const currentYear = now.getFullYear();
+      const currentMonth = now.getMonth();
+
+      const previousMonthDate = new Date(
+        currentYear,
+        currentMonth - 1,
+        1
+      );
+
+      const previousYear = previousMonthDate.getFullYear();
+      const previousMonth = previousMonthDate.getMonth();
+
+      let monthlyIncome = 0;
+      let monthlyExpense = 0;
+
+      let previousMonthIncome = 0;
+      let previousMonthExpense = 0;
+
+      // ------------------------------------------
+      // TRANSACTION CLASSIFICATION
+      // ------------------------------------------
+
+      transactions.forEach((transaction) => {
+        const amount = Number(transaction?.amount || 0);
+
+        if (!amount) {
+          return;
+        }
+
+        const dateValue =
+          transaction?.createdAt ||
+          transaction?.date ||
+          transaction?.timestamp;
+
+        const transactionDate = dateValue
+          ? new Date(dateValue)
+          : null;
+
+        if (
+          !transactionDate ||
+          Number.isNaN(transactionDate.getTime())
+        ) {
+          return;
+        }
+
+        const type = String(
+          transaction?.type ||
+            transaction?.transactionType ||
+            ""
+        ).toUpperCase();
+
+        const sourceAccountNumber =
+          transaction?.sourceAccount?.accountNumber || null;
+
+        const destinationAccountNumber =
+          transaction?.destinationAccount?.accountNumber || null;
+
+        const isSourceAccount = userAccountNumbers.has(
+          sourceAccountNumber
+        );
+
+        const isDestinationAccount = userAccountNumbers.has(
+          destinationAccountNumber
+        );
+
+        let income = false;
+        let expense = false;
+
+        // ------------------------------------------
+        // DEPOSIT
+        // ------------------------------------------
+
+        if (type === "DEPOSIT") {
+          income = true;
+        }
+
+        // ------------------------------------------
+        // WITHDRAWAL
+        // ------------------------------------------
+
+        if (
+          type === "WITHDRAWAL" ||
+          type === "WITHDRAW"
+        ) {
+          expense = true;
+        }
+
+        // ------------------------------------------
+        // CREDIT
+        // ------------------------------------------
+
+        if (type === "CREDIT") {
+          income = true;
+        }
+
+        // ------------------------------------------
+        // TRANSFER
+        // ------------------------------------------
+
+        if (
+          type === "TRANSFER" ||
+          type === "TRANSFER_IN" ||
+          type === "TRANSFER_OUT"
+        ) {
+          if (isDestinationAccount && !isSourceAccount) {
+            income = true;
+          } else if (isSourceAccount && !isDestinationAccount) {
+            expense = true;
+          }
+        }
+
+        // ------------------------------------------
+        // CURRENT MONTH
+        // ------------------------------------------
+
+        const isCurrentMonth =
+          transactionDate.getFullYear() === currentYear &&
+          transactionDate.getMonth() === currentMonth;
+
+        if (isCurrentMonth) {
+          if (income) {
+            monthlyIncome += amount;
+          }
+
+          if (expense) {
+            monthlyExpense += amount;
+          }
+        }
+
+        // ------------------------------------------
+        // PREVIOUS MONTH
+        // ------------------------------------------
+
+        const isPreviousMonth =
+          transactionDate.getFullYear() === previousYear &&
+          transactionDate.getMonth() === previousMonth;
+
+        if (isPreviousMonth) {
+          if (income) {
+            previousMonthIncome += amount;
+          }
+
+          if (expense) {
+            previousMonthExpense += amount;
+          }
+        }
+      });
+
+      // ------------------------------------------
+      // GROWTH CALCULATION
+      // ------------------------------------------
+
+      const calculateGrowth = (current, previous) => {
+        if (previous === 0) {
+          if (current === 0) {
+            return 0;
+          }
+
+          return null;
+        }
+
+        return ((current - previous) / previous) * 100;
+      };
+
+      const incomeGrowth = calculateGrowth(
+        monthlyIncome,
+        previousMonthIncome
+      );
+
+      const expenseGrowth = calculateGrowth(
+        monthlyExpense,
+        previousMonthExpense
+      );
+
+      const netCashFlow =
+        monthlyIncome - monthlyExpense;
+
+      const previousNetCashFlow =
+        previousMonthIncome - previousMonthExpense;
+
+      setFinancialSummary({
+        totalBalance,
+        monthlyIncome,
+        monthlyExpense,
+        previousMonthIncome,
+        previousMonthExpense,
+        incomeGrowth,
+        expenseGrowth,
+        netCashFlow,
+        previousNetCashFlow,
+      });
+
+      setSummaryLoading(false);
+    };
+
+    calculateSummary();
+  }, [accounts, transactions, accountsLoading, transactionsLoading]);
+
+  // ==========================================
+  // FINANCIAL HELPERS
+  // ==========================================
+
+  const formatCurrency = (amount) => {
+    const numericAmount = Number(amount || 0);
+
+    return `₹${numericAmount.toLocaleString("en-IN", {
+      maximumFractionDigits: 2,
+    })}`;
+  };
+
+  const formatGrowth = (growth) => {
+    if (growth === null || growth === undefined) {
+      return "No previous data";
+    }
+
+    const numericGrowth = Number(growth);
+
+    if (!Number.isFinite(numericGrowth)) {
+      return "No previous data";
+    }
+
+    const sign = numericGrowth > 0 ? "+" : "";
+
+    return `${sign}${numericGrowth.toFixed(1)}%`;
+  };
+
+  const getGrowthClass = (growth, type) => {
+    if (growth === null || growth === undefined) {
+      return "bg-white/[0.05] text-slate-500";
+    }
+
+    const numericGrowth = Number(growth);
+
+    if (type === "expense") {
+      if (numericGrowth < 0) {
+        return "bg-emerald-400/10 text-emerald-400";
+      }
+
+      if (numericGrowth > 0) {
+        return "bg-red-400/10 text-red-400";
+      }
+
+      return "bg-white/[0.05] text-slate-500";
+    }
+
+    if (numericGrowth > 0) {
+      return "bg-emerald-400/10 text-emerald-400";
+    }
+
+    if (numericGrowth < 0) {
+      return "bg-red-400/10 text-red-400";
+    }
+
+    return "bg-white/[0.05] text-slate-500";
+  };
+
+  // ==========================================
   // TRANSACTION HELPERS
   // ==========================================
 
@@ -230,10 +610,40 @@ const Dashboard = () => {
         ""
     ).toUpperCase();
 
-    const income =
+    const userAccountNumbers = new Set(
+      accounts
+        .map((account) => account?.accountNumber)
+        .filter(Boolean)
+    );
+
+    const sourceAccountNumber =
+      transaction?.sourceAccount?.accountNumber || null;
+
+    const destinationAccountNumber =
+      transaction?.destinationAccount?.accountNumber || null;
+
+    const isSourceAccount = userAccountNumbers.has(
+      sourceAccountNumber
+    );
+
+    const isDestinationAccount = userAccountNumbers.has(
+      destinationAccountNumber
+    );
+
+    let income =
       type === "DEPOSIT" ||
       type === "CREDIT" ||
       type === "TRANSFER_IN";
+
+    if (type === "WITHDRAWAL" || type === "WITHDRAW") {
+      income = false;
+    }
+
+    if (type === "TRANSFER") {
+      income =
+        isDestinationAccount &&
+        !isSourceAccount;
+    }
 
     return `${income ? "+" : "-"}₹${Math.abs(
       amount
@@ -247,10 +657,38 @@ const Dashboard = () => {
         ""
     ).toUpperCase();
 
+    const userAccountNumbers = new Set(
+      accounts
+        .map((account) => account?.accountNumber)
+        .filter(Boolean)
+    );
+
+    const sourceAccountNumber =
+      transaction?.sourceAccount?.accountNumber || null;
+
+    const destinationAccountNumber =
+      transaction?.destinationAccount?.accountNumber || null;
+
+    const isSourceAccount = userAccountNumbers.has(
+      sourceAccountNumber
+    );
+
+    const isDestinationAccount = userAccountNumbers.has(
+      destinationAccountNumber
+    );
+
     if (
       type === "DEPOSIT" ||
       type === "CREDIT" ||
       type === "TRANSFER_IN"
+    ) {
+      return "income";
+    }
+
+    if (
+      type === "TRANSFER" &&
+      isDestinationAccount &&
+      !isSourceAccount
     ) {
       return "income";
     }
@@ -339,8 +777,6 @@ const Dashboard = () => {
           <div className="pointer-events-none absolute bottom-0 left-1/3 h-40 w-40 rounded-full bg-blue-500/[0.04] blur-[90px]" />
 
           <div className="relative flex flex-col gap-8 lg:flex-row lg:items-end lg:justify-between">
-            {/* LEFT */}
-
             <div>
               <div className="mb-4 inline-flex items-center gap-2 rounded-full border border-cyan-400/10 bg-cyan-400/[0.06] px-3 py-1.5">
                 <span className="h-1.5 w-1.5 rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/60" />
@@ -384,8 +820,6 @@ const Dashboard = () => {
                 </div>
               </div>
             </div>
-
-            {/* ACCOUNT SECURITY */}
 
             <div className="w-full max-w-sm rounded-2xl border border-emerald-400/10 bg-emerald-400/[0.045] p-4 shadow-xl shadow-emerald-500/[0.03]">
               <div className="flex items-center gap-3">
@@ -506,7 +940,11 @@ const Dashboard = () => {
                     </p>
 
                     <h3 className="mt-3 text-3xl font-bold tracking-[-0.03em] sm:text-4xl">
-                      ₹24,580
+                      {summaryLoading || accountsError
+                        ? "—"
+                        : formatCurrency(
+                            financialSummary.totalBalance
+                          )}
                     </h3>
                   </div>
 
@@ -520,7 +958,13 @@ const Dashboard = () => {
                     <TrendingUp size={13} />
                   </div>
 
-                  +12.5% growth this month
+                  {accountsError
+                    ? "Unable to load accounts"
+                    : summaryLoading
+                    ? "Loading balance..."
+                    : `${formatCurrency(
+                        financialSummary.netCashFlow
+                      )} net cash flow this month`}
                 </div>
               </div>
             </motion.div>
@@ -543,7 +987,11 @@ const Dashboard = () => {
                   </p>
 
                   <h3 className="mt-3 text-3xl font-bold tracking-[-0.03em] text-white">
-                    ₹8,500
+                    {summaryLoading || transactionsError
+                      ? "—"
+                      : formatCurrency(
+                          financialSummary.monthlyIncome
+                        )}
                   </h3>
                 </div>
 
@@ -556,8 +1004,17 @@ const Dashboard = () => {
               </div>
 
               <div className="mt-7 flex items-center gap-2">
-                <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold text-emerald-400">
-                  +8.4%
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${getGrowthClass(
+                    financialSummary.incomeGrowth,
+                    "income"
+                  )}`}
+                >
+                  {summaryLoading
+                    ? "Loading..."
+                    : formatGrowth(
+                        financialSummary.incomeGrowth
+                      )}
                 </span>
 
                 <span className="text-xs text-slate-500">
@@ -584,7 +1041,11 @@ const Dashboard = () => {
                   </p>
 
                   <h3 className="mt-3 text-3xl font-bold tracking-[-0.03em] text-white">
-                    ₹2,300
+                    {summaryLoading || transactionsError
+                      ? "—"
+                      : formatCurrency(
+                          financialSummary.monthlyExpense
+                        )}
                   </h3>
                 </div>
 
@@ -597,12 +1058,21 @@ const Dashboard = () => {
               </div>
 
               <div className="mt-7 flex items-center gap-2">
-                <span className="rounded-full bg-emerald-400/10 px-2.5 py-1 text-[10px] font-bold text-emerald-400">
-                  -4.1%
+                <span
+                  className={`rounded-full px-2.5 py-1 text-[10px] font-bold ${getGrowthClass(
+                    financialSummary.expenseGrowth,
+                    "expense"
+                  )}`}
+                >
+                  {summaryLoading
+                    ? "Loading..."
+                    : formatGrowth(
+                        financialSummary.expenseGrowth
+                      )}
                 </span>
 
                 <span className="text-xs text-slate-500">
-                  spending reduced
+                  vs last month
                 </span>
               </div>
             </motion.div>
@@ -685,88 +1155,96 @@ const Dashboard = () => {
             {!transactionsLoading &&
               transactions.length > 0 && (
                 <div>
-                  {transactions.map((item, index) => {
-                    const type = getTransactionType(item);
-                    const income = type === "income";
+                  {transactions
+                    .slice(0, 5)
+                    .map((item, index) => {
+                      const type =
+                        getTransactionType(item);
 
-                    return (
-                      <motion.div
-                        key={item.id || index}
-                        initial={{
-                          opacity: 0,
-                          x: -10,
-                        }}
-                        animate={{
-                          opacity: 1,
-                          x: 0,
-                        }}
-                        transition={{
-                          delay: index * 0.05,
-                          duration: 0.35,
-                        }}
-                        className="group flex items-center justify-between gap-4 border-b border-white/[0.05] p-5 transition duration-200 last:border-b-0 hover:bg-white/[0.035] sm:px-6"
-                      >
-                        <div className="flex min-w-0 items-center gap-4">
-                          <div
-                            className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${
-                              income
-                                ? "border-emerald-400/10 bg-emerald-400/[0.07]"
-                                : "border-red-400/10 bg-red-400/[0.07]"
-                            }`}
-                          >
-                            {income ? (
-                              <TrendingUp
-                                size={17}
-                                className="text-emerald-400"
-                              />
-                            ) : (
-                              <TrendingDown
-                                size={17}
-                                className="text-red-400"
-                              />
-                            )}
-                          </div>
+                      const income = type === "income";
 
-                          <div className="min-w-0">
-                            <p className="truncate text-sm font-semibold text-white">
-                              {getTransactionTitle(item)}
-                            </p>
-
-                            <div className="mt-1.5 flex items-center gap-2">
-                              <p className="text-xs text-slate-600">
-                                {getTransactionDate(item)}
-                              </p>
-
-                              <span className="h-1 w-1 rounded-full bg-slate-700" />
-
-                              <p className="text-[10px] uppercase tracking-wider text-slate-600">
-                                {income ? "Credit" : "Debit"}
-                              </p>
-                            </div>
-                          </div>
-                        </div>
-
-                        <div className="flex shrink-0 items-center gap-3">
-                          <div className="text-right">
-                            <p
-                              className={`text-sm font-bold ${
+                      return (
+                        <motion.div
+                          key={item.id || index}
+                          initial={{
+                            opacity: 0,
+                            x: -10,
+                          }}
+                          animate={{
+                            opacity: 1,
+                            x: 0,
+                          }}
+                          transition={{
+                            delay: index * 0.05,
+                            duration: 0.35,
+                          }}
+                          className="group flex items-center justify-between gap-4 border-b border-white/[0.05] p-5 transition duration-200 last:border-b-0 hover:bg-white/[0.035] sm:px-6"
+                        >
+                          <div className="flex min-w-0 items-center gap-4">
+                            <div
+                              className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${
                                 income
-                                  ? "text-emerald-400"
-                                  : "text-red-400"
+                                  ? "border-emerald-400/10 bg-emerald-400/[0.07]"
+                                  : "border-red-400/10 bg-red-400/[0.07]"
                               }`}
                             >
-                              {formatAmount(item)}
-                            </p>
+                              {income ? (
+                                <TrendingUp
+                                  size={17}
+                                  className="text-emerald-400"
+                                />
+                              ) : (
+                                <TrendingDown
+                                  size={17}
+                                  className="text-red-400"
+                                />
+                              )}
+                            </div>
+
+                            <div className="min-w-0">
+                              <p className="truncate text-sm font-semibold text-white">
+                                {getTransactionTitle(item)}
+                              </p>
+
+                              <div className="mt-1.5 flex items-center gap-2">
+                                <p className="text-xs text-slate-600">
+                                  {getTransactionDate(
+                                    item
+                                  )}
+                                </p>
+
+                                <span className="h-1 w-1 rounded-full bg-slate-700" />
+
+                                <p className="text-[10px] uppercase tracking-wider text-slate-600">
+                                  {income
+                                    ? "Credit"
+                                    : "Debit"}
+                                </p>
+                              </div>
+                            </div>
                           </div>
 
-                          <ChevronRight
-                            size={15}
-                            className="text-slate-700 transition group-hover:translate-x-0.5 group-hover:text-slate-500"
-                          />
-                        </div>
-                      </motion.div>
-                    );
-                  })}
+                          <div className="flex shrink-0 items-center gap-3">
+                            <div className="text-right">
+                              <p
+                                className={`text-sm font-bold ${
+                                  income
+                                    ? "text-emerald-400"
+                                    : "text-red-400"
+                                }`}
+                              >
+                                {formatAmount(item)}
+                              </p>
+                            </div>
+
+                            <ChevronRight
+                              size={15}
+                              className="text-slate-700 transition group-hover:translate-x-0.5 group-hover:text-slate-500"
+                            />
+                          </div>
+                        </motion.div>
+                      );
+                    })}
                 </div>
               )}
           </div>

@@ -1,170 +1,399 @@
-
 import { motion } from "framer-motion";
 import {
-  Wallet,
-  CreditCard,
-  Landmark,
-  Star,
-  ArrowUpRight,
+Wallet,
+CreditCard,
+Landmark,
+Star,
+ArrowUpRight,
 } from "lucide-react";
+import { useEffect, useState } from "react";
 
-const AccountStats = () => {
-  const stats = [
-    {
-      title: "Total Accounts",
-      value: "02",
-      icon: Wallet,
-      desc: "Active accounts",
-      accent: "from-blue-500/20 to-cyan-400/10",
-      iconColor: "text-cyan-300",
-      glow: "bg-cyan-400/10",
-    },
-    {
-      title: "Credit Score",
-      value: "780",
-      icon: CreditCard,
-      desc: "Excellent",
-      accent: "from-violet-500/20 to-fuchsia-400/10",
-      iconColor: "text-violet-300",
-      glow: "bg-violet-400/10",
-    },
-    {
-      title: "Active Loans",
-      value: "01",
-      icon: Landmark,
-      desc: "Running",
-      accent: "from-emerald-500/20 to-green-400/10",
-      iconColor: "text-emerald-300",
-      glow: "bg-emerald-400/10",
-    },
-    {
-      title: "Reward Points",
-      value: "12,450",
-      icon: Star,
-      desc: "Available",
-      accent: "from-amber-500/20 to-orange-400/10",
-      iconColor: "text-amber-300",
-      glow: "bg-amber-400/10",
-    },
-  ];
+import api from "../../services/api";
 
-  return (
-    <div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
-      {stats.map((item, index) => {
-        const Icon = item.icon;
+const AccountStats = ({
+accounts: accountsProp = 0,
+creditScore = 0,
+loans = 0,
+rewards = 0,
+}) => {
+const [accounts, setAccounts] = useState(accountsProp);
+const [loading, setLoading] = useState(true);
 
-        return (
-          <motion.div
-            key={item.title}
-            initial={{
-              opacity: 0,
-              y: 20,
-            }}
-            animate={{
-              opacity: 1,
-              y: 0,
-            }}
-            transition={{
-              duration: 0.45,
-              delay: index * 0.08,
-              ease: "easeOut",
-            }}
-            whileHover={{
-              y: -5,
-            }}
-            className="group relative min-h-[175px] overflow-hidden rounded-[26px] border border-white/[0.08] bg-white/[0.035] p-5 text-white shadow-xl shadow-black/10 backdrop-blur-2xl transition-all duration-500 hover:border-white/[0.14] hover:bg-white/[0.055] hover:shadow-2xl"
-          >
-            {/* ================================
-                AMBIENT GLOW
-            ================================= */}
+// ==========================================
+// FETCH ACCOUNTS
+// ==========================================
 
-            <div
-              className={`pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full ${item.glow} blur-[50px] opacity-50 transition-all duration-700 group-hover:scale-125 group-hover:opacity-100`}
-            />
+useEffect(() => {
+let mounted = true;
 
-            <div className="pointer-events-none absolute inset-0 bg-gradient-to-br from-white/[0.045] via-transparent to-transparent" />
+const fetchAccounts = async () => {
+  try {
+    const token = localStorage.getItem("token");
 
-            <div className="pointer-events-none absolute inset-x-0 top-0 h-px bg-gradient-to-r from-transparent via-white/10 to-transparent" />
+    if (!token) {
+      if (mounted) {
+        setAccounts(0);
+        setLoading(false);
+      }
 
-            {/* ================================
-                TOP ROW
-            ================================= */}
+      return;
+    }
 
-            <div className="relative z-10 flex items-start justify-between">
-              <motion.div
-                whileHover={{
-                  scale: 1.08,
-                  rotate: 3,
-                }}
-                transition={{
-                  type: "spring",
-                  stiffness: 300,
-                  damping: 15,
-                }}
-                className={`flex h-12 w-12 items-center justify-center rounded-[17px] border border-white/10 bg-gradient-to-br ${item.accent} ${item.iconColor} shadow-lg backdrop-blur-xl transition-all duration-500 group-hover:border-white/20`}
-              >
-                <Icon
-                  size={21}
-                  strokeWidth={1.8}
-                />
-              </motion.div>
+    if (mounted) {
+      setLoading(true);
+    }
 
-              <div className="flex h-8 w-8 items-center justify-center rounded-full border border-white/[0.07] bg-white/[0.025] text-slate-600 transition-all duration-300 group-hover:border-cyan-400/15 group-hover:bg-cyan-400/5 group-hover:text-cyan-300">
-                <ArrowUpRight
-                  size={15}
-                  strokeWidth={1.8}
-                  className="transition-transform duration-300 group-hover:-translate-y-0.5 group-hover:translate-x-0.5"
-                />
-              </div>
-            </div>
+    const response = await api.get("/accounts");
 
-            {/* ================================
-                CONTENT
-            ================================= */}
+    if (!mounted) {
+      return;
+    }
 
-            <div className="relative z-10 mt-6">
-              <div className="flex items-baseline gap-2">
-                <h3 className="truncate text-3xl font-extrabold tracking-tight text-white">
-                  {item.value}
-                </h3>
+    const responseData = response?.data;
 
-                {item.title === "Credit Score" && (
-                  <span className="rounded-full border border-emerald-400/10 bg-emerald-400/5 px-2 py-0.5 text-[8px] font-bold uppercase tracking-wider text-emerald-400">
-                    Great
-                  </span>
-                )}
-              </div>
+    if (!responseData?.success) {
+      setAccounts(0);
+      return;
+    }
 
-              <p className="mt-1 text-[13px] font-semibold text-slate-200">
-                {item.title}
-              </p>
+    const data = responseData?.data;
 
-              {/* Status */}
+    if (Array.isArray(data)) {
+      setAccounts(data.length);
+      return;
+    }
 
-              <div className="mt-3 flex items-center gap-2">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-30" />
+    if (data && typeof data === "object") {
+      setAccounts(1);
+      return;
+    }
 
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-emerald-400" />
-                </span>
+    setAccounts(0);
+  } catch (error) {
+    console.error(
+      "ACCOUNT STATS ERROR:",
+      error?.response?.data ||
+        error?.message ||
+        error
+    );
 
-                <p className="text-[10px] font-medium uppercase tracking-[0.12em] text-slate-500 transition-colors duration-300 group-hover:text-slate-400">
-                  {item.desc}
-                </p>
-              </div>
-            </div>
+    if (mounted) {
+      setAccounts(0);
+    }
+  } finally {
+    if (mounted) {
+      setLoading(false);
+    }
+  }
+};
 
-            {/* ================================
-                BOTTOM LINE
-            ================================= */}
+fetchAccounts();
 
-            <div className="pointer-events-none absolute bottom-0 left-1/2 h-px w-0 -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-400/60 to-transparent transition-all duration-700 group-hover:w-[70%]" />
-          </motion.div>
-        );
-      })}
-    </div>
+// ==========================================
+// REFRESH AFTER DASHBOARD UPDATE
+// ==========================================
+
+const handleDashboardUpdate = () => {
+  fetchAccounts();
+};
+
+window.addEventListener(
+  "dashboardUpdated",
+  handleDashboardUpdate
+);
+
+return () => {
+  mounted = false;
+
+  window.removeEventListener(
+    "dashboardUpdated",
+    handleDashboardUpdate
   );
 };
 
-export default AccountStats;
+}, []);
 
+// ==========================================
+// DISPLAY VALUES
+// ==========================================
+
+const accountCount = loading
+? "--"
+: String(accounts).padStart(2, "0");
+
+const formattedCreditScore =
+creditScore || "N/A";
+
+const creditDescription =
+creditScore >= 750
+? "Excellent"
+: creditScore > 0
+? "Needs Improvement"
+: "Not available";
+
+const loanCount = Number(loans) || 0;
+
+const formattedLoans =
+String(loanCount).padStart(2, "0");
+
+const rewardPoints = Number(rewards) || 0;
+
+const stats = [
+{
+title: "Total Accounts",
+value: accountCount,
+icon: Wallet,
+desc: "Active accounts",
+accent: "from-blue-500/20 to-cyan-400/10",
+iconColor: "text-cyan-300",
+glow: "bg-cyan-400/10",
+},
+{
+title: "Credit Score",
+value: formattedCreditScore,
+icon: CreditCard,
+desc: creditDescription,
+accent:
+"from-violet-500/20 to-fuchsia-400/10",
+iconColor: "text-violet-300",
+glow: "bg-violet-400/10",
+},
+{
+title: "Active Loans",
+value: formattedLoans,
+icon: Landmark,
+desc:
+loanCount > 0
+? "Running"
+: "No active loans",
+accent:
+"from-emerald-500/20 to-green-400/10",
+iconColor: "text-emerald-300",
+glow: "bg-emerald-400/10",
+},
+{
+title: "Reward Points",
+value: rewardPoints.toLocaleString("en-IN"),
+icon: Star,
+desc: "Available",
+accent:
+"from-amber-500/20 to-orange-400/10",
+iconColor: "text-amber-300",
+glow: "bg-amber-400/10",
+},
+];
+
+return (
+<div className="grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+{stats.map((item, index) => {
+const Icon = item.icon;
+
+    return (
+      <motion.div
+        key={item.title}
+        initial={{
+          opacity: 0,
+          y: 20,
+        }}
+        animate={{
+          opacity: 1,
+          y: 0,
+        }}
+        transition={{
+          duration: 0.45,
+          delay: index * 0.08,
+        }}
+        whileHover={{
+          y: -5,
+        }}
+        className="
+          group
+          relative
+          min-h-[175px]
+          overflow-hidden
+          rounded-[26px]
+          border
+          border-white/[0.08]
+          bg-white/[0.035]
+          p-5
+          text-white
+          shadow-xl
+          shadow-black/10
+          backdrop-blur-2xl
+          transition-all
+          duration-500
+          hover:border-white/[0.15]
+          hover:bg-white/[0.055]
+        "
+      >
+        {/* Glow */}
+
+        <div
+          className={`
+            pointer-events-none
+            absolute
+            -right-16
+            -top-16
+            h-36
+            w-36
+            rounded-full
+            ${item.glow}
+            blur-[50px]
+            transition-all
+            duration-700
+            group-hover:scale-125
+          `}
+        />
+
+        <div
+          className="
+            pointer-events-none
+            absolute
+            inset-0
+            bg-gradient-to-br
+            from-white/[0.04]
+            via-transparent
+            to-transparent
+          "
+        />
+
+        {/* Header */}
+
+        <div
+          className="
+            relative
+            z-10
+            flex
+            items-start
+            justify-between
+          "
+        >
+          <div
+            className={`
+              flex
+              h-12
+              w-12
+              items-center
+              justify-center
+              rounded-[17px]
+              border
+              border-white/10
+              bg-gradient-to-br
+              ${item.accent}
+              ${item.iconColor}
+            `}
+          >
+            <Icon
+              size={21}
+              strokeWidth={1.8}
+            />
+          </div>
+
+          <div
+            className="
+              flex
+              h-8
+              w-8
+              items-center
+              justify-center
+              rounded-full
+              border
+              border-white/[0.07]
+              bg-white/[0.025]
+              text-slate-500
+              transition
+              group-hover:text-cyan-300
+            "
+          >
+            <ArrowUpRight size={15} />
+          </div>
+        </div>
+
+        {/* Content */}
+
+        <div
+          className="
+            relative
+            z-10
+            mt-6
+          "
+        >
+          <h3
+            className="
+              text-3xl
+              font-extrabold
+              tracking-tight
+            "
+          >
+            {item.value}
+          </h3>
+
+          <p
+            className="
+              mt-1
+              text-sm
+              font-semibold
+              text-slate-200
+            "
+          >
+            {item.title}
+          </p>
+
+          <div
+            className="
+              mt-3
+              flex
+              items-center
+              gap-2
+            "
+          >
+            <span
+              className="
+                h-1.5
+                w-1.5
+                rounded-full
+                bg-emerald-400
+              "
+            />
+
+            <span
+              className="
+                text-[10px]
+                uppercase
+                tracking-[0.12em]
+                text-slate-500
+              "
+            >
+              {item.desc}
+            </span>
+          </div>
+        </div>
+
+        {/* Bottom Glow */}
+
+        <div
+          className="
+            absolute
+            bottom-0
+            left-1/2
+            h-px
+            w-0
+            -translate-x-1/2
+            bg-gradient-to-r
+            from-transparent
+            via-cyan-400/60
+            to-transparent
+            transition-all
+            duration-700
+            group-hover:w-[70%]
+          "
+        />
+      </motion.div>
+    );
+  })}
+</div>
+
+);
+};
+
+export default AccountStats;

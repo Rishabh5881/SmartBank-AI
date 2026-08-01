@@ -1,40 +1,37 @@
 import { useState } from "react";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useNavigate, useParams } from "react-router-dom";
 import { motion } from "framer-motion";
 import {
-  User,
-  Mail,
   Lock,
   ArrowRight,
   Loader2,
   ShieldCheck,
   AlertCircle,
+  CheckCircle2,
   Eye,
   EyeOff,
-  Globe2,
+  ArrowLeft,
 } from "lucide-react";
 import axios from "axios";
-import { GoogleLogin } from "@react-oauth/google";
 
 const API_URL = "http://localhost:5000/api";
 
-const Signup = () => {
+const ResetPassword = () => {
   const navigate = useNavigate();
+  const { token } = useParams();
 
-  const [loading, setLoading] = useState(false);
-  const [googleLoading, setGoogleLoading] = useState(false);
-  const [error, setError] = useState("");
+  const [formData, setFormData] = useState({
+    password: "",
+    confirmPassword: "",
+  });
 
   const [showPassword, setShowPassword] = useState(false);
   const [showConfirmPassword, setShowConfirmPassword] =
     useState(false);
 
-  const [formData, setFormData] = useState({
-    name: "",
-    email: "",
-    password: "",
-    confirmPassword: "",
-  });
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
   // ==========================================
   // HANDLE INPUT
@@ -50,6 +47,10 @@ const Signup = () => {
 
     if (error) {
       setError("");
+    }
+
+    if (success) {
+      setSuccess("");
     }
   };
 
@@ -78,86 +79,39 @@ const Signup = () => {
   };
 
   // ==========================================
-  // SAVE LOGIN SESSION
+  // RESET PASSWORD
   // ==========================================
 
-  const saveLoginSession = (token, user) => {
-    if (!token) {
-      throw new Error(
-        "Authentication token was not received."
-      );
-    }
-
-    if (!user || typeof user !== "object") {
-      throw new Error(
-        "User information was not received."
-      );
-    }
-
-    localStorage.setItem("token", token);
-
-    localStorage.setItem(
-      "user",
-      JSON.stringify(user)
-    );
-
-    window.dispatchEvent(
-      new Event("userUpdated")
-    );
-  };
-
-  // ==========================================
-  // NORMAL SIGNUP
-  // ==========================================
-
-  const handleSignup = async (e) => {
+  const handleSubmit = async (e) => {
     e.preventDefault();
 
     setError("");
+    setSuccess("");
 
-    const name = formData.name.trim();
-    const email = formData.email.trim().toLowerCase();
-    const password = formData.password;
-    const confirmPassword = formData.confirmPassword;
-
-    // ==========================================
-    // REQUIRED FIELDS
-    // ==========================================
-
-    if (
-      !name ||
-      !email ||
-      !password ||
-      !confirmPassword
-    ) {
-      setError("Please fill in all required fields.");
+    if (!token) {
+      setError(
+        "Password reset link is invalid or incomplete."
+      );
       return;
     }
 
-    // ==========================================
-    // NAME VALIDATION
-    // ==========================================
+    const password = formData.password.trim();
+    const confirmPassword =
+      formData.confirmPassword.trim();
 
-    if (name.length < 2) {
-      setError("Please enter a valid full name.");
+    if (!password || !confirmPassword) {
+      setError(
+        "Please enter and confirm your new password."
+      );
       return;
     }
 
-    // ==========================================
-    // PASSWORD VALIDATION
-    // ==========================================
-
-    const passwordError =
-      validatePassword(password);
+    const passwordError = validatePassword(password);
 
     if (passwordError) {
       setError(passwordError);
       return;
     }
-
-    // ==========================================
-    // PASSWORD MATCH
-    // ==========================================
 
     if (password !== confirmPassword) {
       setError("Passwords do not match.");
@@ -168,11 +122,11 @@ const Signup = () => {
       setLoading(true);
 
       const response = await axios.post(
-        `${API_URL}/auth/signup`,
+        `${API_URL}/auth/reset-password`,
         {
-          name,
-          email,
+          token,
           password,
+          confirmPassword,
         },
         {
           withCredentials: true,
@@ -180,51 +134,37 @@ const Signup = () => {
       );
 
       console.log(
-        "SIGNUP RESPONSE:",
+        "RESET PASSWORD RESPONSE:",
         response.data
       );
 
-      // ==========================================
-      // CHECK IF BACKEND AUTO-LOGGED USER IN
-      // ==========================================
+      setSuccess(
+        response?.data?.message ||
+          "Password reset successfully. You can now login with your new password."
+      );
 
-      const responseData =
-        response?.data || {};
-
-      const token =
-        responseData?.accessToken;
-
-      const user =
-        responseData?.data;
-
-      if (token && user) {
-        saveLoginSession(token, user);
-
-        navigate("/dashboard", {
-          replace: true,
-        });
-
-        return;
-      }
-
-      // ==========================================
-      // NORMAL SIGNUP -> LOGIN
-      // ==========================================
-
-      navigate("/login", {
-        replace: true,
-        state: {
-          email,
-        },
+      setFormData({
+        password: "",
+        confirmPassword: "",
       });
+
+      setTimeout(() => {
+        navigate("/login", {
+          replace: true,
+          state: {
+            message:
+              "Password reset successfully. Please login with your new password.",
+          },
+        });
+      }, 1800);
     } catch (err) {
       console.error(
-        "SIGNUP ERROR:",
+        "RESET PASSWORD ERROR:",
         err
       );
 
       console.error(
-        "SIGNUP RESPONSE:",
+        "RESET PASSWORD RESPONSE:",
         err?.response?.data
       );
 
@@ -237,16 +177,17 @@ const Signup = () => {
       if (err?.response?.status === 400) {
         setError(
           backendMessage ||
-            "Please check your signup information."
+            "Invalid or expired password reset link."
         );
-      } else if (err?.response?.status === 409) {
+      } else if (err?.response?.status === 401) {
         setError(
           backendMessage ||
-            "An account with this email already exists."
+            "Password reset link is invalid or expired."
         );
       } else if (err?.response?.status === 404) {
         setError(
-          "Signup service was not found. Please check the backend API."
+          backendMessage ||
+            "Password reset service was not found."
         );
       } else if (err?.response?.status >= 500) {
         setError(
@@ -256,156 +197,13 @@ const Signup = () => {
       } else {
         setError(
           backendMessage ||
-            err?.message ||
-            "Unable to create your account. Please try again."
+            "Unable to reset password. Please try again."
         );
       }
     } finally {
       setLoading(false);
     }
   };
-
-  // ==========================================
-  // GOOGLE SIGNUP
-  // ==========================================
-
-  const handleGoogleSuccess = async (
-    credentialResponse
-  ) => {
-    setError("");
-
-    const credential =
-      credentialResponse?.credential;
-
-    if (!credential) {
-      setGoogleLoading(false);
-
-      setError(
-        "Google authentication credential was not received."
-      );
-
-      return;
-    }
-
-    try {
-      setGoogleLoading(true);
-
-      console.log(
-        "GOOGLE CREDENTIAL RECEIVED"
-      );
-
-      const response = await axios.post(
-        `${API_URL}/auth/google`,
-        {
-          credential,
-        },
-        {
-          withCredentials: true,
-        }
-      );
-
-      console.log(
-        "GOOGLE SIGNUP RESPONSE:",
-        response.data
-      );
-
-      const responseData =
-        response?.data || {};
-
-      const token =
-        responseData?.accessToken;
-
-      const loggedInUser =
-        responseData?.data;
-
-      if (!token) {
-        setError(
-          "Google authentication succeeded, but authentication token was not received."
-        );
-
-        return;
-      }
-
-      if (
-        !loggedInUser ||
-        typeof loggedInUser !== "object"
-      ) {
-        setError(
-          "Google authentication succeeded, but user information was not received."
-        );
-
-        return;
-      }
-
-      saveLoginSession(
-        token,
-        loggedInUser
-      );
-
-      navigate("/dashboard", {
-        replace: true,
-      });
-    } catch (err) {
-      console.error(
-        "GOOGLE SIGNUP ERROR:",
-        err
-      );
-
-      console.error(
-        "GOOGLE SIGNUP RESPONSE:",
-        err?.response?.data
-      );
-
-      const backendMessage =
-        err?.response?.data?.message ||
-        err?.response?.data?.error ||
-        err?.response?.data?.data?.message ||
-        "";
-
-      if (err?.response?.status === 401) {
-        setError(
-          backendMessage ||
-            "Google authentication failed. Please try again."
-        );
-      } else if (err?.response?.status === 404) {
-        setError(
-          "Google authentication API was not found. Please check the backend route."
-        );
-      } else if (err?.response?.status >= 500) {
-        setError(
-          backendMessage ||
-            "Server error during Google authentication."
-        );
-      } else {
-        setError(
-          backendMessage ||
-            "Unable to continue with Google. Please try again."
-        );
-      }
-    } finally {
-      setGoogleLoading(false);
-    }
-  };
-
-  // ==========================================
-  // GOOGLE ERROR
-  // ==========================================
-
-  const handleGoogleError = () => {
-    console.error(
-      "GOOGLE SIGNUP FAILED"
-    );
-
-    setGoogleLoading(false);
-
-    setError(
-      "Google authentication was cancelled or could not be completed."
-    );
-  };
-
-  // ==========================================
-  // RENDER
-  // ==========================================
 
   return (
     <div className="relative flex min-h-screen items-center justify-center overflow-hidden bg-[#020617] px-6 py-12">
@@ -421,7 +219,7 @@ const Signup = () => {
       <div className="pointer-events-none absolute left-1/2 top-1/2 h-[300px] w-[300px] -translate-x-1/2 -translate-y-1/2 rounded-full bg-blue-500/[0.03] blur-[120px]" />
 
       {/* ==========================================
-          SIGNUP CARD
+          RESET PASSWORD CARD
       ========================================== */}
 
       <motion.div
@@ -480,12 +278,12 @@ const Signup = () => {
             </motion.div>
 
             <h1 className="mt-5 text-3xl font-bold tracking-tight text-white">
-              Create Account
+              Reset Password
             </h1>
 
             <p className="mx-auto mt-2 max-w-sm text-sm leading-6 text-slate-400">
-              Create your secure SmartBank AI account
-              and start your smarter banking journey.
+              Create a strong new password for your
+              SmartBank AI account.
             </p>
 
           </div>
@@ -513,7 +311,7 @@ const Signup = () => {
 
               <div>
                 <p className="text-xs font-semibold text-red-300">
-                  Signup failed
+                  Reset failed
                 </p>
 
                 <p className="mt-1 text-xs leading-5 text-red-300/70">
@@ -525,47 +323,49 @@ const Signup = () => {
           )}
 
           {/* ==========================================
-              SIGNUP FORM
+              SUCCESS
+          ========================================== */}
+
+          {success && (
+            <motion.div
+              initial={{
+                opacity: 0,
+                y: -8,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              className="mt-6 flex items-start gap-3 rounded-2xl border border-emerald-400/15 bg-emerald-500/[0.08] p-4"
+            >
+
+              <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-xl bg-emerald-500/10 text-emerald-400">
+                <CheckCircle2 size={17} />
+              </div>
+
+              <div>
+                <p className="text-xs font-semibold text-emerald-300">
+                  Password Updated
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-emerald-300/70">
+                  {success}
+                </p>
+              </div>
+
+            </motion.div>
+          )}
+
+          {/* ==========================================
+              FORM
           ========================================== */}
 
           <form
-            onSubmit={handleSignup}
+            onSubmit={handleSubmit}
             className="mt-7 space-y-5"
           >
 
-            {/* FULL NAME */}
-
-            <Input
-              icon={<User size={19} />}
-              name="name"
-              type="text"
-              placeholder="Full Name"
-              value={formData.name}
-              onChange={handleChange}
-              disabled={
-                loading ||
-                googleLoading
-              }
-              autoComplete="name"
-            />
-
-            {/* EMAIL */}
-
-            <Input
-              icon={<Mail size={19} />}
-              name="email"
-              type="email"
-              placeholder="Email Address"
-              value={formData.email}
-              onChange={handleChange}
-              disabled={
-                loading ||
-                googleLoading
-              }
-              autoComplete="email"
-            />
-
-            {/* PASSWORD */}
+            {/* NEW PASSWORD */}
 
             <div className="group relative">
 
@@ -583,10 +383,9 @@ const Signup = () => {
                 name="password"
                 value={formData.password}
                 onChange={handleChange}
-                placeholder="Password"
+                placeholder="New Password"
                 disabled={
-                  loading ||
-                  googleLoading
+                  loading || Boolean(success)
                 }
                 autoComplete="new-password"
                 className="w-full rounded-2xl border border-white/[0.09] bg-slate-900/70 py-4 pl-12 pr-12 text-sm text-white outline-none transition-all duration-200 placeholder:text-slate-600 hover:border-white/[0.14] focus:border-cyan-400/40 focus:bg-slate-900 focus:ring-4 focus:ring-cyan-400/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
@@ -600,8 +399,7 @@ const Signup = () => {
                   )
                 }
                 disabled={
-                  loading ||
-                  googleLoading
+                  loading || Boolean(success)
                 }
                 className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label={
@@ -635,14 +433,11 @@ const Signup = () => {
                     : "password"
                 }
                 name="confirmPassword"
-                value={
-                  formData.confirmPassword
-                }
+                value={formData.confirmPassword}
                 onChange={handleChange}
-                placeholder="Confirm Password"
+                placeholder="Confirm New Password"
                 disabled={
-                  loading ||
-                  googleLoading
+                  loading || Boolean(success)
                 }
                 autoComplete="new-password"
                 className="w-full rounded-2xl border border-white/[0.09] bg-slate-900/70 py-4 pl-12 pr-12 text-sm text-white outline-none transition-all duration-200 placeholder:text-slate-600 hover:border-white/[0.14] focus:border-cyan-400/40 focus:bg-slate-900 focus:ring-4 focus:ring-cyan-400/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
@@ -656,8 +451,7 @@ const Signup = () => {
                   )
                 }
                 disabled={
-                  loading ||
-                  googleLoading
+                  loading || Boolean(success)
                 }
                 className="absolute right-4 top-1/2 -translate-y-1/2 text-slate-500 transition hover:text-cyan-400 disabled:cursor-not-allowed disabled:opacity-50"
                 aria-label={
@@ -723,25 +517,22 @@ const Signup = () => {
 
             </div>
 
-            {/* CREATE ACCOUNT BUTTON */}
+            {/* RESET BUTTON */}
 
             <motion.button
               type="submit"
               disabled={
-                loading ||
-                googleLoading
+                loading || Boolean(success)
               }
               whileHover={{
                 y:
-                  loading ||
-                  googleLoading
+                  loading || success
                     ? 0
                     : -2,
               }}
               whileTap={{
                 scale:
-                  loading ||
-                  googleLoading
+                  loading || success
                     ? 1
                     : 0.98,
               }}
@@ -758,13 +549,13 @@ const Signup = () => {
                   />
 
                   <span>
-                    Creating Account...
+                    Updating Password...
                   </span>
                 </>
               ) : (
                 <>
                   <span>
-                    Create SmartBank Account
+                    Update Password
                   </span>
 
                   <ArrowRight
@@ -779,78 +570,6 @@ const Signup = () => {
           </form>
 
           {/* ==========================================
-              DIVIDER
-          ========================================== */}
-
-          <div className="my-6 flex items-center gap-4">
-
-            <div className="h-px flex-1 bg-white/[0.08]" />
-
-            <span className="text-[10px] font-semibold uppercase tracking-[0.15em] text-slate-600">
-              Or continue with
-            </span>
-
-            <div className="h-px flex-1 bg-white/[0.08]" />
-
-          </div>
-
-          {/* ==========================================
-              GOOGLE SIGNUP
-          ========================================== */}
-
-          <div className="relative">
-
-            {googleLoading && (
-              <div className="absolute inset-0 z-20 flex items-center justify-center rounded-2xl bg-[#020617]/80 backdrop-blur-sm">
-
-                <div className="flex items-center gap-3 text-sm font-semibold text-white">
-
-                  <Loader2
-                    size={18}
-                    className="animate-spin"
-                  />
-
-                  <span>
-                    Connecting to Google...
-                  </span>
-
-                </div>
-
-              </div>
-            )}
-
-            <div className="flex min-h-[50px] w-full items-center justify-center overflow-hidden rounded-2xl border border-white/[0.09] bg-white/[0.04] transition-all duration-300 hover:border-white/[0.16] hover:bg-white/[0.07]">
-
-              <GoogleLogin
-                onSuccess={
-                  handleGoogleSuccess
-                }
-                onError={
-                  handleGoogleError
-                }
-                useOneTap={false}
-                theme="filled_black"
-                size="large"
-                text="continue_with"
-                shape="rectangular"
-                width="350"
-              />
-
-            </div>
-
-            <div className="pointer-events-none absolute inset-0 flex items-center justify-center gap-3 text-sm font-semibold text-slate-200 opacity-0">
-
-              <Globe2 size={19} />
-
-              <span>
-                Continue with Google
-              </span>
-
-            </div>
-
-          </div>
-
-          {/* ==========================================
               SECURITY
           ========================================== */}
 
@@ -862,7 +581,7 @@ const Signup = () => {
             />
 
             <span className="text-[10px] font-medium uppercase tracking-[0.15em] text-slate-600">
-              Secure account creation
+              Secure password recovery
             </span>
 
             <span className="h-1 w-1 rounded-full bg-slate-700" />
@@ -874,68 +593,27 @@ const Signup = () => {
           </div>
 
           {/* ==========================================
-              LOGIN
+              BACK TO LOGIN
           ========================================== */}
 
-          <p className="mt-7 text-center text-sm text-slate-400">
-
-            Already have an account?
+          <div className="mt-7 text-center">
 
             <Link
               to="/login"
-              className="ml-2 font-semibold text-cyan-400 transition-colors hover:text-cyan-300"
+              className="group inline-flex items-center gap-2 text-sm font-semibold text-cyan-400 transition-colors hover:text-cyan-300"
             >
-              Login
+              <ArrowLeft
+                size={16}
+                className="transition-transform duration-300 group-hover:-translate-x-1"
+              />
+
+              Back to Login
             </Link>
 
-          </p>
+          </div>
 
         </div>
-
       </motion.div>
-
-    </div>
-  );
-};
-
-// ==========================================
-// INPUT COMPONENT
-// ==========================================
-
-const Input = ({
-  icon,
-  name,
-  type = "text",
-  placeholder,
-  value,
-  onChange,
-  disabled = false,
-  autoComplete,
-}) => {
-  return (
-    <div className="group relative">
-
-      <div className="pointer-events-none absolute left-4 top-1/2 z-10 -translate-y-1/2 text-slate-500 transition-colors duration-200 group-focus-within:text-cyan-400">
-        {icon}
-      </div>
-
-      <input
-        required
-        type={type}
-        name={name}
-        value={value}
-        onChange={onChange}
-        placeholder={placeholder}
-        disabled={disabled}
-        autoComplete={
-          autoComplete ||
-          (type === "password"
-            ? "new-password"
-            : "off")
-        }
-        className="w-full rounded-2xl border border-white/[0.09] bg-slate-900/70 py-4 pl-12 pr-4 text-sm text-white outline-none transition-all duration-200 placeholder:text-slate-600 hover:border-white/[0.14] focus:border-cyan-400/40 focus:bg-slate-900 focus:ring-4 focus:ring-cyan-400/[0.06] disabled:cursor-not-allowed disabled:opacity-50"
-      />
-
     </div>
   );
 };
@@ -944,10 +622,7 @@ const Input = ({
 // PASSWORD REQUIREMENT COMPONENT
 // ==========================================
 
-const Requirement = ({
-  valid,
-  text,
-}) => {
+const Requirement = ({ valid, text }) => {
   return (
     <div
       className={`flex items-center gap-2 text-[11px] transition-colors ${
@@ -956,7 +631,6 @@ const Requirement = ({
           : "text-slate-600"
       }`}
     >
-
       <span
         className={`h-1.5 w-1.5 rounded-full ${
           valid
@@ -966,9 +640,8 @@ const Requirement = ({
       />
 
       {text}
-
     </div>
   );
 };
 
-export default Signup;
+export default ResetPassword;

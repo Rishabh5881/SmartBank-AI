@@ -2,11 +2,24 @@ import React from "react";
 import ReactDOM from "react-dom/client";
 
 import { BrowserRouter } from "react-router-dom";
+import { GoogleOAuthProvider } from "@react-oauth/google";
 
 import App from "./App";
 
 import "./styles/globals.css";
 
+
+// ==========================================
+// GOOGLE CLIENT ID
+// ==========================================
+
+const GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID;
+
+
+// ==========================================
+// ROOT RENDER
+// ==========================================
 
 ReactDOM.createRoot(
   document.getElementById("root")
@@ -14,11 +27,17 @@ ReactDOM.createRoot(
 
   <React.StrictMode>
 
-    <BrowserRouter>
+    <GoogleOAuthProvider
+      clientId={GOOGLE_CLIENT_ID}
+    >
 
-      <App />
+      <BrowserRouter>
 
-    </BrowserRouter>
+        <App />
+
+      </BrowserRouter>
+
+    </GoogleOAuthProvider>
 
   </React.StrictMode>
 

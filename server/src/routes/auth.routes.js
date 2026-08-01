@@ -1,68 +1,104 @@
+
 const express = require("express");
 
 const router = express.Router();
 
-
 const {
   signupController,
   loginController,
+  googleLoginController,
+  forgotPasswordController,
+  resetPasswordController,
   refreshController,
   logoutController,
   getMeController,
 } = require("../controllers/auth.controller");
 
-
 const {
-  authenticate
+  authenticate,
 } = require("../middlewares/auth.middleware");
-
-
 
 // ==============================
 // AUTH ROUTES
 // ==============================
 
+// ==============================
+// SIGNUP
+// ==============================
 
-// Signup
 router.post(
   "/signup",
   signupController
 );
 
+// ==============================
+// LOGIN
+// ==============================
 
-
-// Login
 router.post(
   "/login",
   loginController
 );
 
+// ==============================
+// GOOGLE LOGIN
+// ==============================
 
+router.post(
+  "/google",
+  googleLoginController
+);
 
-// Refresh Access Token
+// ==============================
+// FORGOT PASSWORD
+// ==============================
+
+router.post(
+  "/forgot-password",
+  forgotPasswordController
+);
+
+// ==============================
+// RESET PASSWORD
+// ==============================
+
+router.post(
+  "/reset-password",
+  resetPasswordController
+);
+
+// ==============================
+// REFRESH ACCESS TOKEN
+// ==============================
+
 router.post(
   "/refresh",
   refreshController
 );
 
+// ==============================
+// LOGOUT
+// ==============================
 
-
-// Logout
 router.post(
   "/logout",
   logoutController
 );
 
+// ==============================
+// CURRENT USER PROFILE
+// PROTECTED ROUTE
+// ==============================
 
-
-// Current User Profile
-// Protected Route
 router.get(
   "/me",
   authenticate,
   getMeController
 );
 
-
+// ==============================
+// EXPORT ROUTER
+// ==============================
 
 module.exports = router;
+
