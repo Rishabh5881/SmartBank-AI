@@ -1,686 +1,861 @@
 import { motion } from "framer-motion";
-
 import {
-Wifi,
-CreditCard,
-ShieldCheck
+  Wifi,
+  CreditCard,
+  Eye,
+  EyeOff,
+  Sparkles,
+  LockKeyhole,
 } from "lucide-react";
-
 import { useEffect, useState } from "react";
 
-import axios from "axios";
+import api from "../../services/api";
 
 const BankCard = () => {
+  const [user, setUser] = useState(null);
+  const [account, setAccount] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [showBalance, setShowBalance] = useState(true);
 
-const [user, setUser] = useState(null);
+  // ==========================================
+  // LOAD USER
+  // ==========================================
 
-const [account, setAccount] = useState(null);
+  useEffect(() => {
+    const loadUser = () => {
+      const storedUser = localStorage.getItem("user");
 
-const [loading, setLoading] = useState(true);
+      if (!storedUser) {
+        setUser(null);
+        return;
+      }
 
-// =========================
-// LOAD LOGGED IN USER
-// =========================
+      try {
+        setUser(JSON.parse(storedUser));
+      } catch (error) {
+        console.error("BANK CARD USER ERROR:", error);
+        setUser(null);
+      }
+    };
 
-useEffect(() => {
+    loadUser();
 
+    window.addEventListener("userUpdated", loadUser);
 
-const loadUser = () => {
+    return () => {
+      window.removeEventListener("userUpdated", loadUser);
+    };
+  }, []);
 
-  const storedUser =
-    localStorage.getItem("user");
+  // ==========================================
+  // FETCH ACCOUNT
+  // ==========================================
 
-  if (storedUser) {
+  useEffect(() => {
+    let mounted = true;
 
-    try {
+    const fetchAccount = async () => {
+      try {
+        if (mounted) {
+          setLoading(true);
+        }
 
-      setUser(JSON.parse(storedUser));
+        const token = localStorage.getItem("token");
 
-    } catch (error) {
+        if (!token) {
+          if (mounted) {
+            setAccount(null);
+            setLoading(false);
+          }
 
-      console.log(
-        "BANK CARD USER ERROR:",
-        error
-      );
+          return;
+        }
 
-    }
+        const response = await api.get("/accounts");
 
-  }
+        if (!mounted) {
+          return;
+        }
 
-};
+        const responseData = response?.data;
 
+        if (responseData?.success) {
+          const data = responseData?.data;
 
-loadUser();
+          if (Array.isArray(data)) {
+            setAccount(data.length > 0 ? data[0] : null);
+          } else if (data && typeof data === "object") {
+            setAccount(data);
+          } else {
+            setAccount(null);
+          }
+        } else {
+          setAccount(null);
+        }
+      } catch (error) {
+        console.error(
+          "BANK CARD ACCOUNT ERROR:",
+          error?.response?.data || error?.message || error
+        );
 
-
-window.addEventListener(
-  "userUpdated",
-  loadUser
-);
-
-
-return () => {
-
-  window.removeEventListener(
-    "userUpdated",
-    loadUser
-  );
-
-};
-
-
-}, []);
-
-// =========================
-// FETCH ACCOUNT
-// =========================
-
-useEffect(() => {
-
-
-const fetchAccount = async () => {
-
-  try {
-
-    const token =
-      localStorage.getItem("token");
-
-
-    if (!token) {
-
-      console.log(
-        "BANK CARD: TOKEN NOT FOUND"
-      );
-
-      setLoading(false);
-
-      return;
-
-    }
-
-
-    const response = await axios.get(
-      "http://localhost:5000/api/v1/accounts",
-      {
-        headers: {
-          Authorization: `Bearer ${token}`
+        if (mounted) {
+          setAccount(null);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
         }
       }
+    };
+
+    fetchAccount();
+
+    const handleDashboardUpdate = () => {
+      fetchAccount();
+    };
+
+    window.addEventListener(
+      "dashboardUpdated",
+      handleDashboardUpdate
     );
 
+    return () => {
+      mounted = false;
 
-    console.log(
-      "BANK CARD ACCOUNT DATA:",
-      response.data
-    );
-
-
-    if (
-      response.data?.success &&
-      response.data?.data?.length > 0
-    ) {
-
-      // Primary / first account
-
-      setAccount(
-        response.data.data[0]
+      window.removeEventListener(
+        "dashboardUpdated",
+        handleDashboardUpdate
       );
+    };
+  }, []);
 
+  // ==========================================
+  // USER DATA
+  // ==========================================
+
+  const userName =
+    user?.fullName ||
+    user?.name ||
+    user?.username ||
+    "SMARTBANK USER";
+
+  // ==========================================
+  // ACCOUNT DATA
+  // ==========================================
+
+  const accountNumber =
+    account?.accountNumber ||
+    account?.accountNo ||
+    "000000000000";
+
+  const accountType =
+    account?.accountType ||
+    account?.type ||
+    "SAVINGS";
+
+  const currency =
+    account?.currency ||
+    "INR";
+
+  const rawBalance =
+    account?.balance ??
+    account?.availableBalance ??
+    account?.currentBalance ??
+    0;
+
+  const balance = Number(rawBalance) || 0;
+
+  const accountStatus =
+    account?.status ||
+    "ACTIVE";
+
+  const isActive =
+    String(accountStatus).toUpperCase() === "ACTIVE";
+
+  // ==========================================
+  // CURRENCY FORMATTER
+  // ==========================================
+
+  const currencySymbol =
+    String(currency).toUpperCase() === "USD"
+      ? "$"
+      : String(currency).toUpperCase() === "EUR"
+        ? "€"
+        : String(currency).toUpperCase() === "GBP"
+          ? "£"
+          : "₹";
+
+  const formattedBalance = balance.toLocaleString(
+    String(currency).toUpperCase() === "INR"
+      ? "en-IN"
+      : "en-US",
+    {
+      minimumFractionDigits: 0,
+      maximumFractionDigits: 2,
     }
-
-  } catch (error) {
-
-    console.error(
-      "BANK CARD ACCOUNT ERROR:",
-      error
-    );
-
-  } finally {
-
-    setLoading(false);
-
-  }
-
-};
-
-
-fetchAccount();
-
-}, []);
-
-// =========================
-// USER NAME
-// =========================
-
-const userName =
-user?.fullName ||
-user?.name ||
-"SMARTBANK USER";
-
-// =========================
-// ACCOUNT DATA
-// =========================
-
-const accountNumber =
-account?.accountNumber ||
-"•••• •••• ••••";
-
-const accountType =
-account?.accountType ||
-"SAVINGS";
-
-const currency =
-account?.currency ||
-"INR";
-
-const balance =
-account?.balance != null
-? Number(account.balance)
-: 0;
-
-// =========================
-// FORMAT ACCOUNT NUMBER
-// =========================
-
-const formattedAccountNumber =
-accountNumber.length >= 4
-? `•••• •••• ${accountNumber.slice(-4)}`
-: accountNumber;
-
-// =========================
-// FORMAT BALANCE
-// =========================
-
-const formattedBalance =
-balance.toLocaleString(
-"en-IN"
-);
-
-return (
-
-
-<motion.div
-
-  initial={{
-    opacity: 0,
-    y: 20
-  }}
-
-  animate={{
-    opacity: 1,
-    y: 0
-  }}
-
-  whileHover={{
-    scale: 1.02,
-    y: -4
-  }}
-
-  transition={{
-    duration: 0.4,
-    ease: "easeOut"
-  }}
-
-  className="
-    group
-    relative
-    h-72
-    w-full
-    overflow-hidden
-    rounded-[28px]
-    border
-    border-white/20
-    bg-gradient-to-br
-    from-blue-700
-    via-cyan-500
-    to-indigo-700
-    p-6
-    text-white
-    shadow-2xl
-    shadow-blue-500/25
-    transition-shadow
-    duration-500
-    hover:shadow-cyan-500/30
-    sm:p-7
-  "
->
-
-  {/* =========================
-      BACKGROUND GLOW
-  ========================= */}
-
-  <div
-    className="
-      pointer-events-none
-      absolute
-      -right-24
-      -top-24
-      h-64
-      w-64
-      rounded-full
-      bg-white/20
-      blur-3xl
-      transition
-      duration-500
-      group-hover:scale-125
-    "
-  />
-
-  <div
-    className="
-      pointer-events-none
-      absolute
-      -bottom-28
-      -left-20
-      h-56
-      w-56
-      rounded-full
-      bg-blue-400/20
-      blur-3xl
-    "
-  />
-
-
-  {/* =========================
-      SHINE
-  ========================= */}
-
-  <div
-    className="
-      pointer-events-none
-      absolute
-      inset-0
-      bg-gradient-to-br
-      from-white/10
-      via-transparent
-      to-transparent
-    "
-  />
-
-
-  <div
-    className="
-      relative
-      z-10
-      flex
-      h-full
-      flex-col
-      justify-between
-    "
-  >
-
-
-    {/* =========================
-        TOP SECTION
-    ========================= */}
-
-    <div>
-
-      <div
-        className="
-          flex
-          items-center
-          justify-between
-        "
-      >
-
-        <div className="flex items-center gap-3">
-
-          <div
-            className="
-              flex
-              h-10
-              w-10
-              items-center
-              justify-center
-              rounded-xl
-              border
-              border-white/20
-              bg-white/10
-              backdrop-blur-md
-            "
-          >
-
-            <CreditCard
-              size={20}
-            />
-
-          </div>
-
-
-          <div>
-
-            <p
-              className="
-                text-[10px]
-                font-medium
-                uppercase
-                tracking-[0.2em]
-                text-white/60
-              "
-            >
-              Digital Banking
-            </p>
-
-            <h2
-              className="
-                text-xl
-                font-bold
-                tracking-wide
-                sm:text-2xl
-              "
-            >
-              SmartBank AI
-            </h2>
-
-          </div>
-
-        </div>
-
-
-        <div
-          className="
-            text-xl
-            font-black
-            italic
-            tracking-wider
-          "
-        >
-          VISA
-        </div>
-
-      </div>
-
-
-      {/* =========================
-          CHIP
-      ========================= */}
-
-      <div
-        className="
-          mt-7
-          flex
-          items-center
-          gap-4
-        "
-      >
-
-        <div
-          className="
-            relative
-            flex
-            h-11
-            w-14
-            items-center
-            justify-center
-            overflow-hidden
-            rounded-xl
-            border
-            border-yellow-200/40
-            bg-gradient-to-br
-            from-yellow-200
-            to-yellow-500
-            shadow-lg
-          "
-        >
-
-          <div
-            className="
-              absolute
-              inset-1
-              rounded-lg
-              border
-              border-yellow-700/30
-            "
-          />
-
-          <div
-            className="
-              absolute
-              h-px
-              w-full
-              bg-yellow-700/30
-            "
-          />
-
-          <div
-            className="
-              absolute
-              h-full
-              w-px
-              bg-yellow-700/30
-            "
-          />
-
-          <span
-            className="
-              relative
-              text-sm
-              text-yellow-800
-            "
-          >
-            ▦
-          </span>
-
-        </div>
-
-
-        <Wifi
-          size={27}
-          className="
-            rotate-90
-            text-white/90
-          "
-        />
-
-      </div>
-
-
-      {/* =========================
-          ACCOUNT NUMBER
-      ========================= */}
-
-      <div className="mt-5">
-
-        <div
-          className="
-            flex
-            items-center
-            justify-between
-            gap-3
-          "
-        >
-
-          <p
-            className="
-              text-[10px]
-              uppercase
-              tracking-[0.25em]
-              text-white/50
-            "
-          >
-            Account Number
-          </p>
-
-          <span
-            className="
-              rounded-full
-              border
-              border-white/15
-              bg-white/10
-              px-2.5
-              py-1
-              text-[9px]
-              font-semibold
-              uppercase
-              tracking-wider
-              text-white/80
-            "
-          >
-            {accountType}
-          </span>
-
-        </div>
-
-
-        <h1
-          className="
-            mt-1
-            whitespace-nowrap
-            text-xl
-            font-semibold
-            tracking-[0.22em]
-            sm:text-2xl
-            sm:tracking-[0.25em]
-          "
-        >
-          {loading
-            ? "•••• •••• ••••"
-            : formattedAccountNumber}
-        </h1>
-
-
-        <p
-          className="
-            mt-1
-            text-[10px]
-            font-medium
-            text-white/60
-          "
-        >
-          {currency} • Available Balance ₹
-          {loading
-            ? "..."
-            : formattedBalance}
-        </p>
-
-      </div>
-
-    </div>
-
-
-    {/* =========================
-        BOTTOM DETAILS
-    ========================= */}
-
-    <div
+  );
+
+  // ==========================================
+  // ACCOUNT NUMBER FORMATTER
+  // ==========================================
+
+  const cleanAccountNumber = String(accountNumber).replace(
+    /\s/g,
+    ""
+  );
+
+  const formattedAccountNumber =
+    cleanAccountNumber.length >= 4
+      ? `****  ****  ${cleanAccountNumber.slice(-4)}`
+      : "****  ****  ****";
+
+  // ==========================================
+  // ACCOUNT TYPE FORMATTER
+  // ==========================================
+
+  const formattedAccountType = String(accountType)
+    .replace(/_/g, " ")
+    .toUpperCase();
+
+  // ==========================================
+  // STATUS FORMATTER
+  // ==========================================
+
+  const formattedStatus = String(accountStatus)
+    .replace(/_/g, " ")
+    .toUpperCase();
+
+  // ==========================================
+  // RENDER
+  // ==========================================
+
+  return (
+    <motion.div
+      initial={{
+        opacity: 0,
+        y: 20,
+      }}
+      animate={{
+        opacity: 1,
+        y: 0,
+      }}
+      whileHover={{
+        y: -5,
+        scale: 1.005,
+      }}
+      transition={{
+        duration: 0.45,
+        ease: "easeOut",
+      }}
       className="
-        flex
-        items-end
-        justify-between
+        group
+        relative
+        min-h-[350px]
+        w-full
+        overflow-hidden
+        rounded-[30px]
+        border
+        border-white/15
+        bg-gradient-to-br
+        from-[#172554]
+        via-[#1d4ed8]
+        to-[#0f172a]
+        p-6
+        text-white
+        shadow-2xl
+        shadow-blue-950/40
+        transition-all
+        duration-500
+        hover:border-cyan-300/30
+        hover:shadow-cyan-500/20
+        sm:min-h-[350px]
+        sm:p-7
       "
     >
-
-      {/* CARD HOLDER */}
-
-      <div>
-
-        <p
-          className="
-            text-[9px]
-            uppercase
-            tracking-[0.2em]
-            text-white/60
-          "
-        >
-          Account Holder
-        </p>
-
-        <h3
-          className="
-            mt-1
-            max-w-[180px]
-            truncate
-            text-sm
-            font-bold
-            uppercase
-            tracking-wider
-            sm:text-base
-          "
-        >
-          {userName}
-        </h3>
-
-      </div>
-
-
-      {/* ACCOUNT STATUS */}
-
-      <div>
-
-        <p
-          className="
-            text-[9px]
-            uppercase
-            tracking-[0.2em]
-            text-white/60
-          "
-        >
-          Status
-        </p>
-
-        <h3
-          className="
-            mt-1
-            text-sm
-            font-bold
-            tracking-wider
-            text-green-300
-            sm:text-base
-          "
-        >
-          {account?.status || "ACTIVE"}
-        </h3>
-
-      </div>
-
-
-      {/* SECURITY */}
+      {/* ==========================================
+          AMBIENT GLOW
+      ========================================== */}
 
       <div
         className="
+          pointer-events-none
+          absolute
+          -right-24
+          -top-24
+          h-72
+          w-72
+          rounded-full
+          bg-cyan-400/20
+          blur-[90px]
+          transition-transform
+          duration-700
+          group-hover:scale-125
+        "
+      />
+
+      <div
+        className="
+          pointer-events-none
+          absolute
+          -bottom-28
+          -left-24
+          h-72
+          w-72
+          rounded-full
+          bg-indigo-600/25
+          blur-[90px]
+        "
+      />
+
+      {/* ==========================================
+          GLASS OVERLAY
+      ========================================== */}
+
+      <div
+        className="
+          pointer-events-none
+          absolute
+          inset-0
+          bg-gradient-to-br
+          from-white/[0.10]
+          via-transparent
+          to-black/20
+        "
+      />
+
+      <div
+        className="
+          pointer-events-none
+          absolute
+          left-0
+          right-0
+          top-0
+          h-px
+          bg-gradient-to-r
+          from-transparent
+          via-white/40
+          to-transparent
+        "
+      />
+
+      {/* ==========================================
+          CARD CONTENT
+      ========================================== */}
+
+      <div className="relative z-10 flex min-h-[298px] flex-col justify-between">
+        {/* ========================================
+            TOP SECTION
+        ======================================== */}
+
+        <div>
+          {/* BRAND */}
+
+          <div className="flex items-start justify-between">
+            <div className="flex items-center gap-3">
+              <div
+                className="
+                  flex
+                  h-10
+                  w-10
+                  shrink-0
+                  items-center
+                  justify-center
+                  rounded-xl
+                  border
+                  border-white/20
+                  bg-white/10
+                  shadow-lg
+                  backdrop-blur-xl
+                "
+              >
+                <CreditCard
+                  size={20}
+                  strokeWidth={1.8}
+                />
+              </div>
+
+              <div>
+                <p
+                  className="
+                    text-[8px]
+                    font-medium
+                    uppercase
+                    tracking-[0.25em]
+                    text-white/50
+                  "
+                >
+                  Digital Banking
+                </p>
+
+                <h2
+                  className="
+                    mt-0.5
+                    text-lg
+                    font-extrabold
+                    tracking-tight
+                    sm:text-xl
+                  "
+                >
+                  SmartBank{" "}
+                  <span className="text-cyan-200">
+                    AI
+                  </span>
+                </h2>
+              </div>
+            </div>
+
+            {/* VISA */}
+
+            <div className="text-right">
+              <p
+                className="
+                  text-lg
+                  font-black
+                  italic
+                  tracking-[0.12em]
+                  text-white/90
+                "
+              >
+                VISA
+              </p>
+
+              <p
+                className="
+                  text-[7px]
+                  uppercase
+                  tracking-[0.2em]
+                  text-white/40
+                "
+              >
+                Platinum
+              </p>
+            </div>
+          </div>
+
+          {/* CHIP + CONTACTLESS */}
+
+          <div className="mt-5 flex items-center justify-between">
+            <div
+              className="
+                relative
+                h-10
+                w-[52px]
+                overflow-hidden
+                rounded-[10px]
+                border
+                border-yellow-100/50
+                bg-gradient-to-br
+                from-yellow-100
+                via-yellow-300
+                to-yellow-600
+                shadow-lg
+              "
+            >
+              <div
+                className="
+                  absolute
+                  inset-1
+                  rounded-lg
+                  border
+                  border-yellow-700/30
+                "
+              />
+
+              <div
+                className="
+                  absolute
+                  left-1/2
+                  top-0
+                  h-full
+                  w-px
+                  -translate-x-1/2
+                  bg-yellow-700/30
+                "
+              />
+
+              <div
+                className="
+                  absolute
+                  left-0
+                  top-1/2
+                  h-px
+                  w-full
+                  -translate-y-1/2
+                  bg-yellow-700/30
+                "
+              />
+
+              <div
+                className="
+                  absolute
+                  left-1/2
+                  top-1/2
+                  h-4
+                  w-4
+                  -translate-x-1/2
+                  -translate-y-1/2
+                  rounded-full
+                  border
+                  border-yellow-700/30
+                "
+              />
+            </div>
+
+            <div
+              className="
+                flex
+                items-center
+                gap-2
+                rounded-full
+                border
+                border-white/10
+                bg-white/[0.06]
+                px-2.5
+                py-1.5
+                backdrop-blur-md
+              "
+            >
+              <Wifi
+                size={17}
+                className="rotate-90 text-white/70"
+              />
+
+              <span
+                className="
+                  hidden
+                  text-[7px]
+                  uppercase
+                  tracking-[0.15em]
+                  text-white/40
+                  sm:block
+                "
+              >
+                Contactless
+              </span>
+            </div>
+          </div>
+
+          {/* ACCOUNT NUMBER */}
+
+          <div className="mt-4">
+            <div className="flex items-center justify-between gap-3">
+              <p
+                className="
+                  text-[8px]
+                  font-medium
+                  uppercase
+                  tracking-[0.22em]
+                  text-white/45
+                "
+              >
+                Account Number
+              </p>
+
+              <span
+                className="
+                  shrink-0
+                  rounded-full
+                  border
+                  border-white/15
+                  bg-white/[0.08]
+                  px-2.5
+                  py-1
+                  text-[7px]
+                  font-semibold
+                  uppercase
+                  tracking-[0.12em]
+                  text-white/70
+                "
+              >
+                {formattedAccountType}
+              </span>
+            </div>
+
+            <motion.p
+              key={`${loading}-${formattedAccountNumber}`}
+              initial={{
+                opacity: 0,
+              }}
+              animate={{
+                opacity: 1,
+              }}
+              className="
+                mt-1
+                whitespace-nowrap
+                text-base
+                font-semibold
+                tracking-[0.16em]
+                text-white
+                sm:text-lg
+                sm:tracking-[0.20em]
+              "
+            >
+              {loading
+                ? "****  ****  ****"
+                : formattedAccountNumber}
+            </motion.p>
+          </div>
+        </div>
+
+        {/* ========================================
+            BOTTOM SECTION
+        ======================================== */}
+
+        <div className="mt-5">
+          {/* BALANCE */}
+
+          <div className="flex items-end justify-between gap-4">
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <p
+                  className="
+                    text-[8px]
+                    font-medium
+                    uppercase
+                    tracking-[0.2em]
+                    text-white/45
+                  "
+                >
+                  Available Balance
+                </p>
+
+                <button
+                  type="button"
+                  onClick={() =>
+                    setShowBalance((value) => !value)
+                  }
+                  aria-label={
+                    showBalance
+                      ? "Hide balance"
+                      : "Show balance"
+                  }
+                  className="
+                    rounded-full
+                    p-1
+                    text-white/40
+                    transition
+                    hover:bg-white/10
+                    hover:text-white
+                  "
+                >
+                  {showBalance ? (
+                    <EyeOff size={11} />
+                  ) : (
+                    <Eye size={11} />
+                  )}
+                </button>
+              </div>
+
+              <div className="mt-0.5 flex items-baseline gap-2">
+                <span
+                  className="
+                    text-[10px]
+                    font-medium
+                    text-white/45
+                  "
+                >
+                  {currency}
+                </span>
+
+                <motion.span
+                  key={`${showBalance}-${formattedBalance}-${loading}`}
+                  initial={{
+                    opacity: 0,
+                    filter: "blur(4px)",
+                  }}
+                  animate={{
+                    opacity: 1,
+                    filter: "blur(0px)",
+                  }}
+                  className="
+                    text-2xl
+                    font-extrabold
+                    tracking-tight
+                    sm:text-3xl
+                  "
+                >
+                  {loading
+                    ? "..."
+                    : showBalance
+                      ? `${currencySymbol}${formattedBalance}`
+                      : `${currencySymbol}******`}
+                </motion.span>
+              </div>
+            </div>
+
+            {/* STATUS */}
+
+            <div
+              className={`
+                flex
+                shrink-0
+                items-center
+                gap-1.5
+                rounded-full
+                border
+                px-2.5
+                py-1.5
+                ${
+                  isActive
+                    ? "border-emerald-300/20 bg-emerald-300/[0.08]"
+                    : "border-yellow-300/20 bg-yellow-300/[0.08]"
+                }
+              `}
+            >
+              <span
+                className={`
+                  h-1.5
+                  w-1.5
+                  rounded-full
+                  shadow
+                  ${
+                    isActive
+                      ? "bg-emerald-300 shadow-emerald-300/80"
+                      : "bg-yellow-300 shadow-yellow-300/80"
+                  }
+                `}
+              />
+
+              <span
+                className={`
+                  text-[7px]
+                  font-bold
+                  uppercase
+                  tracking-[0.1em]
+                  ${
+                    isActive
+                      ? "text-emerald-200"
+                      : "text-yellow-200"
+                  }
+                `}
+              >
+                {isActive
+                  ? "Active"
+                  : formattedStatus}
+              </span>
+            </div>
+          </div>
+
+          {/* DIVIDER */}
+
+          <div className="my-3 border-t border-white/10" />
+
+          {/* FOOTER */}
+
+          <div className="flex items-center justify-between gap-4">
+            {/* CARD HOLDER */}
+
+            <div className="min-w-0">
+              <p
+                className="
+                  text-[7px]
+                  font-medium
+                  uppercase
+                  tracking-[0.18em]
+                  text-white/40
+                "
+              >
+                Card Holder
+              </p>
+
+              <p
+                className="
+                  mt-0.5
+                  max-w-[170px]
+                  truncate
+                  text-[11px]
+                  font-bold
+                  uppercase
+                  tracking-[0.08em]
+                  text-white/90
+                  sm:text-xs
+                "
+              >
+                {userName}
+              </p>
+            </div>
+
+            {/* SECURITY */}
+
+            <div
+              className="
+                flex
+                shrink-0
+                items-center
+                gap-1.5
+                rounded-full
+                border
+                border-white/10
+                bg-white/[0.07]
+                px-2.5
+                py-1.5
+              "
+            >
+              <LockKeyhole
+                size={10}
+                className="text-emerald-300"
+              />
+
+              <span
+                className="
+                  text-[7px]
+                  font-semibold
+                  uppercase
+                  tracking-[0.1em]
+                  text-white/60
+                "
+              >
+                Secured
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* ==========================================
+          AI SIGNATURE
+      ========================================== */}
+
+      <div
+        className="
+          pointer-events-none
+          absolute
+          bottom-4
+          right-5
           hidden
           items-center
-          gap-1.5
-          rounded-full
-          border
-          border-white/15
-          bg-white/10
-          px-3
-          py-1.5
-          backdrop-blur-md
+          gap-1
+          text-[7px]
+          font-semibold
+          uppercase
+          tracking-[0.15em]
+          text-white/20
           sm:flex
         "
       >
-
-        <ShieldCheck
-          size={13}
-          className="text-green-300"
-        />
-
-        <span
-          className="
-            text-[9px]
-            font-medium
-            uppercase
-            tracking-wider
-            text-white/80
-          "
-        >
-          Secured
-        </span>
-
+        <Sparkles size={9} />
+        SmartBank AI
       </div>
 
-    </div>
+      {/* ==========================================
+          CARD EDGE
+      ========================================== */}
 
-  </div>
-
-</motion.div>
-
-
-);
-
+      <div
+        className="
+          pointer-events-none
+          absolute
+          bottom-0
+          left-0
+          right-0
+          h-12
+          bg-gradient-to-t
+          from-black/10
+          to-transparent
+        "
+      />
+    </motion.div>
+  );
 };
 
 export default BankCard;

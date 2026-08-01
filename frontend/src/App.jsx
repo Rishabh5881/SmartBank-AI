@@ -1,184 +1,182 @@
 import {
   Routes,
   Route,
-  useLocation
+  Navigate,
 } from "react-router-dom";
 
-
 import Navbar from "./components/layout/Navbar";
-
 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
-
 import Dashboard from "./pages/Dashboard";
 
+import Profile from "./pages/Profile";
+import Notifications from "./pages/Notifications";
 
 import Accounts from "./pages/accounts/Accounts";
-
+import Transactions from "./pages/transactions/Transactions";
 import Cards from "./pages/cards/Cards";
-
 import Loans from "./pages/loans/Loans";
 
-import Transactions from "./pages/transaction/Transactions";
-
-import Notification from "./pages/Notification";
-
-import Profile from "./pages/profile";
-
-import NotFound from "./pages/NotFound";
-
-
-import ProtectedRoute from "./components/ProtectedRoute";
-
+import AdminLoans from "./pages/admin/AdminLoans";
 
 import ProtectedRoute from "./components/auth/ProtectedRoute";
 
+const App = () => {
+  return (
+    <div className="min-h-screen bg-[#020617]">
+      {/* ==========================================
+          GLOBAL NAVBAR
+      ========================================== */}
 
+      <Navbar />
 
-function App(){
+      {/* ==========================================
+          APPLICATION ROUTES
+      ========================================== */}
 
+      <Routes>
+        {/* ==========================================
+            PUBLIC ROUTES
+        ========================================== */}
 
-const location = useLocation();
+        <Route
+          path="/"
+          element={<Home />}
+        />
 
+        <Route
+          path="/login"
+          element={<Login />}
+        />
 
+        <Route
+          path="/signup"
+          element={<Signup />}
+        />
 
-const hideNavbar =
-location.pathname === "/login" ||
-location.pathname === "/signup";
+        {/* ==========================================
+            PROTECTED DASHBOARD
+        ========================================== */}
 
+        <Route
+          path="/dashboard"
+          element={
+            <ProtectedRoute>
+              <Dashboard />
+            </ProtectedRoute>
+          }
+        />
 
+        {/* ==========================================
+            PROFILE
+        ========================================== */}
 
-return (
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <Profile />
+            </ProtectedRoute>
+          }
+        />
 
-<>
+        {/* ==========================================
+            NOTIFICATIONS
+        ========================================== */}
 
+        <Route
+          path="/notifications"
+          element={
+            <ProtectedRoute>
+              <Notifications />
+            </ProtectedRoute>
+          }
+        />
 
-{
-!hideNavbar && <Navbar />
-}
+        {/* ==========================================
+            ACCOUNTS
+        ========================================== */}
 
+        <Route
+          path="/accounts"
+          element={
+            <ProtectedRoute>
+              <Accounts />
+            </ProtectedRoute>
+          }
+        />
 
+        {/* ==========================================
+            TRANSACTIONS
+        ========================================== */}
 
-<Routes>
+        <Route
+          path="/transactions"
+          element={
+            <ProtectedRoute>
+              <Transactions />
+            </ProtectedRoute>
+          }
+        />
 
+        {/* ==========================================
+            CARDS
+        ========================================== */}
 
+        <Route
+          path="/cards"
+          element={
+            <ProtectedRoute>
+              <Cards />
+            </ProtectedRoute>
+          }
+        />
 
-<Route
-path="/"
-element={<Home />}
-/>
+        {/* ==========================================
+            LOANS
+        ========================================== */}
 
+        <Route
+          path="/loans"
+          element={
+            <ProtectedRoute>
+              <Loans />
+            </ProtectedRoute>
+          }
+        />
 
-<Route
-path="/login"
-element={<Login />}
-/>
+        {/* ==========================================
+            ADMIN LOANS
+        ========================================== */}
 
+        <Route
+          path="/admin/loans"
+          element={
+            <ProtectedRoute>
+              <AdminLoans />
+            </ProtectedRoute>
+          }
+        />
 
-<Route
-path="/signup"
-element={<Signup />}
-/>
+        {/* ==========================================
+            FALLBACK
+        ========================================== */}
 
-
-
-
-
-<Route
-path="/dashboard"
-element={
-<ProtectedRoute>
-<Dashboard />
-</ProtectedRoute>
-}
-/>
-
-
-
-<Route
-path="/accounts"
-element={
-<ProtectedRoute>
-<Accounts/>
-</ProtectedRoute>
-}
-/>
-
-
-
-<Route
-path="/transactions"
-element={
-<ProtectedRoute>
-<Transactions />
-</ProtectedRoute>
-}
-/>
-
-
-
-<Route
-path="/cards"
-element={
-<ProtectedRoute>
-<Cards />
-</ProtectedRoute>
-}
-/>
-
-
-
-<Route
-path="/loans"
-element={
-<ProtectedRoute>
-<Loans />
-</ProtectedRoute>
-}
-/>
-
-
-
-<Route
-path="/notifications"
-element={
-<ProtectedRoute>
-<Notifications />
-</ProtectedRoute>
-}
-/>
-
-
-
-<Route
-path="/profile"
-element={
-<ProtectedRoute>
-<Profile />
-</ProtectedRoute>
-}
-/>
-
-
-
-<Route
-path="*"
-element={<NotFound />}
-/>
-
-
-
-</Routes>
-
-
-</>
-
-);
-
-}
-
-
+        <Route
+          path="*"
+          element={
+            <Navigate
+              to="/"
+              replace
+            />
+          }
+        />
+      </Routes>
+    </div>
+  );
+};
 
 export default App;
+

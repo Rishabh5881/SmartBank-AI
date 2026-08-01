@@ -1,4 +1,4 @@
-```jsx
+
 import { motion } from "framer-motion";
 
 import {
@@ -480,4 +480,4 @@ const AnalyticsCard = () => {
 
 
 export default AnalyticsCard;
-```
+

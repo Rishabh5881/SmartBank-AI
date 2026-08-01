@@ -1,86 +1,104 @@
 @import "tailwindcss";
 
+/* =========================================
+GLOBAL RESET
+========================================= */
+
+*{
+box-sizing: border-box;
+}
 
 html {
-
-  scroll-behavior:smooth;
-
+scroll-behavior: smooth;
+width: 100%;
+min-height: 100%;
 }
-
 
 body {
-
-  margin:0;
-
-  padding:0;
-
-  background:#020617;
-
-  color:white;
-
-  font-family:
-
-  Inter,
-
-  system-ui,
-
-  -apple-system,
-
-  BlinkMacSystemFont,
-
-  "Segoe UI",
-
-  sans-serif;
-
+margin: 0;
+padding: 0;
+width: 100%;
+min-height: 100vh;
+background: #020617;
+color: #ffffff;
+font-family:
+Inter,
+system-ui,
+-apple-system,
+BlinkMacSystemFont,
+"Segoe UI",
+sans-serif;
+-webkit-font-smoothing: antialiased;
+-moz-osx-font-smoothing: grayscale;
 }
 
-
-
-* {
-
-  box-sizing:border-box;
-
+#root {
+width: 100%;
+min-height: 100vh;
 }
 
+/* =========================================
+LINKS
+========================================= */
 
+a {
+color: inherit;
+text-decoration: none;
+}
+
+/* =========================================
+BUTTONS
+========================================= */
+
+button {
+font-family: inherit;
+}
+
+/* =========================================
+INPUTS
+========================================= */
+
+input,
+textarea,
+select {
+font-family: inherit;
+}
+
+/* =========================================
+SCROLLBAR
+========================================= */
 
 ::-webkit-scrollbar {
-
-  width:8px;
-
+width: 8px;
 }
-
-
 
 ::-webkit-scrollbar-track {
-
-  background:#020617;
-
+background: #020617;
 }
-
-
 
 ::-webkit-scrollbar-thumb {
-
-  background:#2563eb;
-
-  border-radius:20px;
-
-}
-html{
-  scroll-behavior:smooth;
+background: #2563eb;
+border-radius: 20px;
 }
 
+::-webkit-scrollbar-thumb {
+background: #06b6d4;
+}
 
-body{
+/* =========================================
+SELECTION
+========================================= */
 
-  margin:0;
+::selection {
+background: rgba(37, 99, 235, 0.35);
+color: #ffffff;
+}
 
-  background:#020617;
+/* =========================================
+IMAGE
+========================================= */
 
-  font-family:
-  Inter,
-  system-ui,
-  sans-serif;
-
+img {
+max-width: 100%;
+display: block;
 }
