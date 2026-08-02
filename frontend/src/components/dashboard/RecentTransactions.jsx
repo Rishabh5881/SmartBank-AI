@@ -1,3 +1,4 @@
+
 import { motion } from "framer-motion";
 import {
   Activity,
@@ -94,35 +95,54 @@ const RecentTransactions = () => {
   }, []);
 
   // =========================
-  // TRANSACTION HELPERS
+  // GET TRANSACTION TYPE
   // =========================
 
-  const getTransactionType = (transaction) => {
-    const type = String(
+  const getRawType = (transaction) => {
+    return String(
       transaction?.type ||
         transaction?.transactionType ||
         ""
     ).toUpperCase();
+  };
+
+  // =========================
+  // GET INCOME / EXPENSE
+  // =========================
+
+  const getTransactionType = (transaction) => {
+    const type = getRawType(transaction);
 
     if (type === "DEPOSIT" || type === "CREDIT") {
       return "income";
     }
 
+    if (type === "WITHDRAW" || type === "WITHDRAWAL") {
+      return "expense";
+    }
+
+    if (type === "TRANSFER") {
+      return "expense";
+    }
+
     return "expense";
   };
 
+  // =========================
+  // GET TITLE
+  // =========================
+
   const getTitle = (transaction) => {
-    const type = String(
-      transaction?.type ||
-        transaction?.transactionType ||
-        ""
-    ).toUpperCase();
+    const type = getRawType(transaction);
 
     if (type === "DEPOSIT") {
       return "Money Deposited";
     }
 
-    if (type === "WITHDRAW") {
+    if (
+      type === "WITHDRAW" ||
+      type === "WITHDRAWAL"
+    ) {
       return "Cash Withdrawal";
     }
 
@@ -130,17 +150,31 @@ const RecentTransactions = () => {
       return "Money Transfer";
     }
 
-    return transaction?.description || "Bank Transaction";
+    return (
+      transaction?.description ||
+      "Bank Transaction"
+    );
   };
 
+  // =========================
+  // GET AMOUNT
+  // =========================
+
   const getAmount = (transaction) => {
-    const amount = Number(transaction?.amount || 0);
+    const amount = Math.abs(
+      Number(transaction?.amount || 0)
+    );
+
     const type = getTransactionType(transaction);
 
     return `${
       type === "income" ? "+" : "-"
     }₹${amount.toLocaleString("en-IN")}`;
   };
+
+  // =========================
+  // GET DATE
+  // =========================
 
   const getDate = (transaction) => {
     const dateValue =
@@ -166,12 +200,14 @@ const RecentTransactions = () => {
     });
   };
 
+  // =========================
+  // GET STATUS
+  // =========================
+
   const getStatus = (transaction) => {
-    const status = String(
+    return String(
       transaction?.status || "COMPLETED"
     ).toUpperCase();
-
-    return status;
   };
 
   // =========================
@@ -296,27 +332,28 @@ const RecentTransactions = () => {
                 Recent Transactions
               </h3>
 
-              {!loading && transactions.length > 0 && (
-                <span
-                  className="
-                    hidden
-                    rounded-full
-                    border
-                    border-white/10
-                    bg-white/[0.04]
-                    px-2
-                    py-0.5
-                    text-[9px]
-                    font-semibold
-                    uppercase
-                    tracking-wider
-                    text-slate-500
-                    sm:inline-flex
-                  "
-                >
-                  Live
-                </span>
-              )}
+              {!loading &&
+                transactions.length > 0 && (
+                  <span
+                    className="
+                      hidden
+                      rounded-full
+                      border
+                      border-white/10
+                      bg-white/[0.04]
+                      px-2
+                      py-0.5
+                      text-[9px]
+                      font-semibold
+                      uppercase
+                      tracking-wider
+                      text-slate-500
+                      sm:inline-flex
+                    "
+                  >
+                    Live
+                  </span>
+                )}
             </div>
 
             <p
@@ -866,3 +903,4 @@ const RecentTransactions = () => {
 };
 
 export default RecentTransactions;
+

@@ -1,3 +1,4 @@
+
 import { motion } from "framer-motion";
 import {
   Wifi,
@@ -49,7 +50,7 @@ const BankCard = () => {
   }, []);
 
   // ==========================================
-  // FETCH ACCOUNT
+  // FETCH ACCOUNT DATA
   // ==========================================
 
   useEffect(() => {
@@ -87,6 +88,18 @@ const BankCard = () => {
 
         const data = responseData?.data;
 
+        /*
+         * Backend may return:
+         *
+         * data: [...]
+         *
+         * OR
+         *
+         * data: {
+         *   ...
+         * }
+         */
+
         if (Array.isArray(data)) {
           setAccount(data.length > 0 ? data[0] : null);
           return;
@@ -116,8 +129,7 @@ const BankCard = () => {
 
     fetchAccount();
 
-    // Dashboard / transaction update ke baad account
-    // balance automatically refresh hoga.
+    // Refresh account data whenever dashboard data changes.
     const handleDashboardUpdate = () => {
       fetchAccount();
     };
@@ -161,7 +173,9 @@ const BankCard = () => {
     account?.type ||
     "SAVINGS";
 
-  const currency = account?.currency || "INR";
+  const currency =
+    account?.currency ||
+    "INR";
 
   const rawBalance =
     account?.balance ??
@@ -182,7 +196,8 @@ const BankCard = () => {
   // CURRENCY FORMATTER
   // ==========================================
 
-  const normalizedCurrency = String(currency).toUpperCase();
+  const normalizedCurrency =
+    String(currency).toUpperCase();
 
   const currencySymbol =
     normalizedCurrency === "USD"
@@ -207,10 +222,8 @@ const BankCard = () => {
   // ACCOUNT NUMBER FORMATTER
   // ==========================================
 
-  const cleanAccountNumber = String(accountNumber).replace(
-    /\s/g,
-    ""
-  );
+  const cleanAccountNumber =
+    String(accountNumber).replace(/\s/g, "");
 
   const formattedAccountNumber =
     cleanAccountNumber.length >= 4
@@ -221,17 +234,19 @@ const BankCard = () => {
   // ACCOUNT TYPE FORMATTER
   // ==========================================
 
-  const formattedAccountType = String(accountType)
-    .replace(/_/g, " ")
-    .toUpperCase();
+  const formattedAccountType =
+    String(accountType)
+      .replace(/_/g, " ")
+      .toUpperCase();
 
   // ==========================================
   // STATUS FORMATTER
   // ==========================================
 
-  const formattedStatus = String(accountStatus)
-    .replace(/_/g, " ")
-    .toUpperCase();
+  const formattedStatus =
+    String(accountStatus)
+      .replace(/_/g, " ")
+      .toUpperCase();
 
   // ==========================================
   // RENDER
@@ -893,3 +908,4 @@ const BankCard = () => {
 };
 
 export default BankCard;
+

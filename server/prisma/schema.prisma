@@ -1,4 +1,3 @@
-
 generator client {
   provider = "prisma-client-js"
 }
@@ -11,38 +10,30 @@ datasource db {
 model User {
   id String @id @default(uuid())
 
-  name String
-
-  email String @unique
-
+  name     String
+  email    String  @unique
   password String?
-
   googleId String? @unique
 
   createdAt DateTime @default(now())
-
   updatedAt DateTime @updatedAt
 
-  accounts Account[]
-
-  sessions Session[]
-
+  accounts            Account[]
+  sessions            Session[]
   passwordResetTokens PasswordResetToken[]
-
-  cards Card[]
+  cards               Card[]
+  financialGoals      FinancialGoal[]
+  loans               Loan[]
 }
 
 model Session {
   id String @id @default(uuid())
 
-  userId String
-
+  userId           String
   refreshTokenHash String @unique
 
   ipAddress String?
-
   userAgent String?
-
   expiresAt DateTime
 
   createdAt DateTime @default(now())
@@ -54,12 +45,10 @@ model PasswordResetToken {
   id String @id @default(uuid())
 
   tokenHash String @unique
-
-  userId String
+  userId    String
 
   expiresAt DateTime
-
-  usedAt DateTime?
+  usedAt    DateTime?
 
   createdAt DateTime @default(now())
 
@@ -70,75 +59,57 @@ model Account {
   id String @id @default(uuid())
 
   accountNumber String @unique
+  accountType   String
 
-  accountType String
-
-  balance Decimal @default(0)
-
-  currency String @default("INR")
-
-  status String @default("ACTIVE")
+  balance  Decimal @default(0)
+  currency String  @default("INR")
+  status   String  @default("ACTIVE")
 
   userId String
 
   createdAt DateTime @default(now())
-
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
-  sourceTransactions Transaction[] @relation("SourceAccount")
-
+  sourceTransactions      Transaction[] @relation("SourceAccount")
   destinationTransactions Transaction[] @relation("DestinationAccount")
 }
 
 model Transaction {
   id String @id @default(uuid())
 
-  amount Decimal
-
-  type String
-
-  status String
-
-  description String?
-
+  amount       Decimal
+  type         String
+  status       String
+  description  String?
   balanceAfter Decimal?
 
-  sourceAccountId String?
-
+  sourceAccountId      String?
   destinationAccountId String?
 
   createdAt DateTime @default(now())
 
-  sourceAccount Account? @relation("SourceAccount", fields: [sourceAccountId], references: [id])
-
+  sourceAccount      Account? @relation("SourceAccount", fields: [sourceAccountId], references: [id])
   destinationAccount Account? @relation("DestinationAccount", fields: [destinationAccountId], references: [id])
 }
 
 model Card {
   id String @id @default(uuid())
 
-  type String
-
+  type   String
   number String
-
   holder String
-
   expiry String
 
-  limit Decimal @default(0)
-
+  limit    Decimal @default(0)
   validity String
-
   interest Decimal @default(0)
-
-  frozen Boolean @default(false)
+  frozen   Boolean @default(false)
 
   userId String
 
   createdAt DateTime @default(now())
-
   updatedAt DateTime @updatedAt
 
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
@@ -146,3 +117,52 @@ model Card {
   @@index([userId])
 }
 
+model FinancialGoal {
+  id String @id @default(uuid())
+
+  title String
+
+  targetAmount Decimal
+  savedAmount  Decimal @default(0)
+
+  status String @default("IN_PROGRESS")
+
+  userId String
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+}
+
+model Loan {
+  id String @id @default(uuid())
+
+  userId String
+
+  loanType String
+
+  principalAmount Decimal
+  interestRate    Decimal
+
+  tenureMonths Int
+  monthlyEmi   Decimal
+  totalPayable Decimal
+
+  paidAmount      Decimal @default(0)
+  remainingAmount Decimal
+
+  nextPaymentDate DateTime?
+
+  status String @default("ACTIVE")
+
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+
+  @@index([userId])
+  @@index([userId, status])
+}

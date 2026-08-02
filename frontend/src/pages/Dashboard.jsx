@@ -27,6 +27,91 @@ import AIAssistant from "../components/dashboard/AIAssistant";
 import QuickActionModal from "../components/dashboard/QuickActionModal";
 import FinancialGoals from "../components/dashboard/FinancialGoals";
 
+// ==========================================
+// TRANSACTION CLASSIFICATION
+// ==========================================
+
+const getTransactionFlow = (transaction, userAccountNumbers) => {
+  const type = String(
+    transaction?.type ||
+      transaction?.transactionType ||
+      ""
+  ).toUpperCase();
+
+  const sourceAccountNumber =
+    transaction?.sourceAccount?.accountNumber || null;
+
+  const destinationAccountNumber =
+    transaction?.destinationAccount?.accountNumber || null;
+
+  const isSourceAccount =
+    Boolean(sourceAccountNumber) &&
+    userAccountNumbers.has(sourceAccountNumber);
+
+  const isDestinationAccount =
+    Boolean(destinationAccountNumber) &&
+    userAccountNumbers.has(destinationAccountNumber);
+
+  // ------------------------------------------
+  // DIRECT INCOME
+  // ------------------------------------------
+
+  if (
+    type === "DEPOSIT" ||
+    type === "CREDIT" ||
+    type === "TRANSFER_IN"
+  ) {
+    return "income";
+  }
+
+  // ------------------------------------------
+  // DIRECT EXPENSE
+  // ------------------------------------------
+
+  if (
+    type === "WITHDRAW" ||
+    type === "WITHDRAWAL" ||
+    type === "TRANSFER_OUT"
+  ) {
+    return "expense";
+  }
+
+  // ------------------------------------------
+  // TRANSFER
+  // ------------------------------------------
+
+  if (type === "TRANSFER") {
+    // Money received from an external account
+    if (isDestinationAccount && !isSourceAccount) {
+      return "income";
+    }
+
+    // Money sent to an external account
+    if (isSourceAccount && !isDestinationAccount) {
+      return "expense";
+    }
+
+    // User's own account -> user's own account
+    // Do not count it as income or expense.
+    if (isSourceAccount && isDestinationAccount) {
+      return "neutral";
+    }
+
+    // Cannot confidently identify direction.
+    return "neutral";
+  }
+
+  // ------------------------------------------
+  // UNKNOWN / UNSUPPORTED TYPE
+  // ------------------------------------------
+
+  return "neutral";
+};
+
+// ==========================================
+// DASHBOARD
+// ==========================================
+
 const Dashboard = () => {
   const [modal, setModal] = useState(false);
   const [action, setAction] = useState("");
@@ -366,7 +451,7 @@ const Dashboard = () => {
       transactions.forEach((transaction) => {
         const amount = Number(transaction?.amount || 0);
 
-        if (!amount) {
+        if (!Number.isFinite(amount) || amount <= 0) {
           return;
         }
 
@@ -386,70 +471,15 @@ const Dashboard = () => {
           return;
         }
 
-        const type = String(
-          transaction?.type ||
-            transaction?.transactionType ||
-            ""
-        ).toUpperCase();
-
-        const sourceAccountNumber =
-          transaction?.sourceAccount?.accountNumber || null;
-
-        const destinationAccountNumber =
-          transaction?.destinationAccount?.accountNumber || null;
-
-        const isSourceAccount = userAccountNumbers.has(
-          sourceAccountNumber
+        const flow = getTransactionFlow(
+          transaction,
+          userAccountNumbers
         );
 
-        const isDestinationAccount = userAccountNumbers.has(
-          destinationAccountNumber
-        );
-
-        let income = false;
-        let expense = false;
-
-        // ------------------------------------------
-        // DEPOSIT
-        // ------------------------------------------
-
-        if (type === "DEPOSIT") {
-          income = true;
-        }
-
-        // ------------------------------------------
-        // WITHDRAWAL
-        // ------------------------------------------
-
-        if (
-          type === "WITHDRAWAL" ||
-          type === "WITHDRAW"
-        ) {
-          expense = true;
-        }
-
-        // ------------------------------------------
-        // CREDIT
-        // ------------------------------------------
-
-        if (type === "CREDIT") {
-          income = true;
-        }
-
-        // ------------------------------------------
-        // TRANSFER
-        // ------------------------------------------
-
-        if (
-          type === "TRANSFER" ||
-          type === "TRANSFER_IN" ||
-          type === "TRANSFER_OUT"
-        ) {
-          if (isDestinationAccount && !isSourceAccount) {
-            income = true;
-          } else if (isSourceAccount && !isDestinationAccount) {
-            expense = true;
-          }
+        // Neutral transactions such as internal transfers
+        // must not affect income or expense.
+        if (flow === "neutral") {
+          return;
         }
 
         // ------------------------------------------
@@ -461,11 +491,11 @@ const Dashboard = () => {
           transactionDate.getMonth() === currentMonth;
 
         if (isCurrentMonth) {
-          if (income) {
+          if (flow === "income") {
             monthlyIncome += amount;
           }
 
-          if (expense) {
+          if (flow === "expense") {
             monthlyExpense += amount;
           }
         }
@@ -479,11 +509,11 @@ const Dashboard = () => {
           transactionDate.getMonth() === previousMonth;
 
         if (isPreviousMonth) {
-          if (income) {
+          if (flow === "income") {
             previousMonthIncome += amount;
           }
 
-          if (expense) {
+          if (flow === "expense") {
             previousMonthExpense += amount;
           }
         }
@@ -537,7 +567,12 @@ const Dashboard = () => {
     };
 
     calculateSummary();
-  }, [accounts, transactions, accountsLoading, transactionsLoading]);
+  }, [
+    accounts,
+    transactions,
+    accountsLoading,
+    transactionsLoading,
+  ]);
 
   // ==========================================
   // FINANCIAL HELPERS
@@ -601,99 +636,38 @@ const Dashboard = () => {
   // TRANSACTION HELPERS
   // ==========================================
 
-  const formatAmount = (transaction) => {
-    const amount = Number(transaction?.amount || 0);
-
-    const type = String(
-      transaction?.type ||
-        transaction?.transactionType ||
-        ""
-    ).toUpperCase();
-
-    const userAccountNumbers = new Set(
+  const getUserAccountNumbers = () => {
+    return new Set(
       accounts
         .map((account) => account?.accountNumber)
         .filter(Boolean)
     );
-
-    const sourceAccountNumber =
-      transaction?.sourceAccount?.accountNumber || null;
-
-    const destinationAccountNumber =
-      transaction?.destinationAccount?.accountNumber || null;
-
-    const isSourceAccount = userAccountNumbers.has(
-      sourceAccountNumber
-    );
-
-    const isDestinationAccount = userAccountNumbers.has(
-      destinationAccountNumber
-    );
-
-    let income =
-      type === "DEPOSIT" ||
-      type === "CREDIT" ||
-      type === "TRANSFER_IN";
-
-    if (type === "WITHDRAWAL" || type === "WITHDRAW") {
-      income = false;
-    }
-
-    if (type === "TRANSFER") {
-      income =
-        isDestinationAccount &&
-        !isSourceAccount;
-    }
-
-    return `${income ? "+" : "-"}₹${Math.abs(
-      amount
-    ).toLocaleString("en-IN")}`;
   };
 
   const getTransactionType = (transaction) => {
-    const type = String(
-      transaction?.type ||
-        transaction?.transactionType ||
-        ""
-    ).toUpperCase();
+    const userAccountNumbers = getUserAccountNumbers();
 
-    const userAccountNumbers = new Set(
-      accounts
-        .map((account) => account?.accountNumber)
-        .filter(Boolean)
+    return getTransactionFlow(
+      transaction,
+      userAccountNumbers
     );
+  };
 
-    const sourceAccountNumber =
-      transaction?.sourceAccount?.accountNumber || null;
+  const formatAmount = (transaction) => {
+    const amount = Number(transaction?.amount || 0);
 
-    const destinationAccountNumber =
-      transaction?.destinationAccount?.accountNumber || null;
+    const flow = getTransactionType(transaction);
 
-    const isSourceAccount = userAccountNumbers.has(
-      sourceAccountNumber
-    );
+    const prefix =
+      flow === "income"
+        ? "+"
+        : flow === "expense"
+        ? "-"
+        : "";
 
-    const isDestinationAccount = userAccountNumbers.has(
-      destinationAccountNumber
-    );
-
-    if (
-      type === "DEPOSIT" ||
-      type === "CREDIT" ||
-      type === "TRANSFER_IN"
-    ) {
-      return "income";
-    }
-
-    if (
-      type === "TRANSFER" &&
-      isDestinationAccount &&
-      !isSourceAccount
-    ) {
-      return "income";
-    }
-
-    return "expense";
+    return `${prefix}₹${Math.abs(amount).toLocaleString(
+      "en-IN"
+    )}`;
   };
 
   const getTransactionTitle = (transaction) => {
@@ -1162,6 +1136,8 @@ const Dashboard = () => {
                         getTransactionType(item);
 
                       const income = type === "income";
+                      const expense = type === "expense";
+                      const neutral = type === "neutral";
 
                       return (
                         <motion.div
@@ -1185,7 +1161,9 @@ const Dashboard = () => {
                               className={`flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border ${
                                 income
                                   ? "border-emerald-400/10 bg-emerald-400/[0.07]"
-                                  : "border-red-400/10 bg-red-400/[0.07]"
+                                  : expense
+                                  ? "border-red-400/10 bg-red-400/[0.07]"
+                                  : "border-white/[0.08] bg-white/[0.04]"
                               }`}
                             >
                               {income ? (
@@ -1193,10 +1171,15 @@ const Dashboard = () => {
                                   size={17}
                                   className="text-emerald-400"
                                 />
-                              ) : (
+                              ) : expense ? (
                                 <TrendingDown
                                   size={17}
                                   className="text-red-400"
+                                />
+                              ) : (
+                                <Activity
+                                  size={17}
+                                  className="text-slate-500"
                                 />
                               )}
                             </div>
@@ -1215,10 +1198,20 @@ const Dashboard = () => {
 
                                 <span className="h-1 w-1 rounded-full bg-slate-700" />
 
-                                <p className="text-[10px] uppercase tracking-wider text-slate-600">
+                                <p
+                                  className={`text-[10px] uppercase tracking-wider ${
+                                    income
+                                      ? "text-emerald-400/70"
+                                      : expense
+                                      ? "text-red-400/70"
+                                      : "text-slate-600"
+                                  }`}
+                                >
                                   {income
                                     ? "Credit"
-                                    : "Debit"}
+                                    : expense
+                                    ? "Debit"
+                                    : "Transfer"}
                                 </p>
                               </div>
                             </div>
@@ -1230,7 +1223,9 @@ const Dashboard = () => {
                                 className={`text-sm font-bold ${
                                   income
                                     ? "text-emerald-400"
-                                    : "text-red-400"
+                                    : expense
+                                    ? "text-red-400"
+                                    : "text-slate-400"
                                 }`}
                               >
                                 {formatAmount(item)}

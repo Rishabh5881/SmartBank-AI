@@ -17,6 +17,8 @@ const analyticsRoutes = require("./routes/analytics.routes");
 const insightRoutes = require("./routes/insight.routes");
 const dashboardRoutes = require("./routes/dashboard.routes");
 const cardRoutes = require("./routes/card.routes");
+const goalRoutes = require("./routes/goal.routes");
+const loanRoutes = require("./routes/loan.routes");
 
 // =====================
 // ERROR MIDDLEWARE
@@ -148,6 +150,24 @@ app.use(
 app.use(
   "/api/cards",
   cardRoutes
+);
+
+// =====================
+// GOAL ROUTES
+// =====================
+
+app.use(
+  "/api/goals",
+  goalRoutes
+);
+
+// =====================
+// LOAN ROUTES
+// =====================
+
+app.use(
+  "/api/loans",
+  loanRoutes
 );
 
 // =====================

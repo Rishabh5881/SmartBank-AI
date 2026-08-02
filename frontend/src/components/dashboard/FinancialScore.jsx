@@ -1,3 +1,5 @@
+
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   ShieldCheck,
@@ -8,14 +10,504 @@ import {
   ArrowUpRight,
 } from "lucide-react";
 
-const FinancialScore = ({
-  score = 87,
-  savingScore = 92,
-  spendingControl = 85,
-  securityScore = 95,
-  status = "Healthy",
-  title = "Excellent Financial Health",
-}) => {
+import api from "../../services/api";
+
+const FinancialScore = () => {
+  const [accounts, setAccounts] = useState([]);
+  const [transactions, setTransactions] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState(false);
+
+  // ==========================================
+  // FETCH FINANCIAL DATA
+  // ==========================================
+
+  useEffect(() => {
+    let mounted = true;
+
+    const fetchFinancialData = async () => {
+      try {
+        if (mounted) {
+          setLoading(true);
+          setError(false);
+        }
+
+        const token = localStorage.getItem("token");
+
+        if (!token) {
+          if (mounted) {
+            setAccounts([]);
+            setTransactions([]);
+            setLoading(false);
+          }
+
+          return;
+        }
+
+        const [accountsResponse, transactionsResponse] =
+          await Promise.all([
+            api.get("/accounts"),
+            api.get("/transactions"),
+          ]);
+
+        if (!mounted) {
+          return;
+        }
+
+        // ==========================================
+        // ACCOUNTS
+        // ==========================================
+
+        const accountsResponseData =
+          accountsResponse?.data;
+
+        if (accountsResponseData?.success) {
+          const accountData =
+            accountsResponseData?.data;
+
+          if (Array.isArray(accountData)) {
+            setAccounts(accountData);
+          } else if (
+            accountData &&
+            typeof accountData === "object"
+          ) {
+            setAccounts([accountData]);
+          } else {
+            setAccounts([]);
+          }
+        } else {
+          setAccounts([]);
+        }
+
+        // ==========================================
+        // TRANSACTIONS
+        // ==========================================
+
+        const transactionsResponseData =
+          transactionsResponse?.data;
+
+        if (transactionsResponseData?.success) {
+          const transactionData =
+            transactionsResponseData?.data;
+
+          setTransactions(
+            Array.isArray(transactionData)
+              ? transactionData
+              : []
+          );
+        } else {
+          setTransactions([]);
+        }
+      } catch (err) {
+        console.error(
+          "FINANCIAL SCORE DATA ERROR:",
+          err?.response?.data ||
+            err?.message ||
+            err
+        );
+
+        if (mounted) {
+          setAccounts([]);
+          setTransactions([]);
+          setError(true);
+        }
+      } finally {
+        if (mounted) {
+          setLoading(false);
+        }
+      }
+    };
+
+    fetchFinancialData();
+
+    // Refresh score whenever dashboard data changes.
+    const handleDashboardUpdate = () => {
+      fetchFinancialData();
+    };
+
+    window.addEventListener(
+      "dashboardUpdated",
+      handleDashboardUpdate
+    );
+
+    return () => {
+      mounted = false;
+
+      window.removeEventListener(
+        "dashboardUpdated",
+        handleDashboardUpdate
+      );
+    };
+  }, []);
+
+  // ==========================================
+  // FINANCIAL CALCULATIONS
+  // ==========================================
+
+  const financialMetrics = useMemo(() => {
+    const totalBalance = accounts.reduce(
+      (sum, account) => {
+        const balance = Number(
+          account?.balance ??
+            account?.availableBalance ??
+            account?.currentBalance ??
+            0
+        );
+
+        return sum +
+          (Number.isFinite(balance)
+            ? Math.max(0, balance)
+            : 0);
+      },
+      0
+    );
+
+    const userAccountNumbers = new Set(
+      accounts
+        .map(
+          (account) =>
+            account?.accountNumber ||
+            account?.accountNo
+        )
+        .filter(Boolean)
+        .map((value) => String(value))
+    );
+
+    let totalIncome = 0;
+    let totalExpense = 0;
+
+    let recentIncome = 0;
+    let recentExpense = 0;
+
+    const now = new Date();
+
+    const thirtyDaysAgo = new Date(
+      now.getTime() -
+        30 * 24 * 60 * 60 * 1000
+    );
+
+    transactions.forEach((transaction) => {
+      const amount = Number(
+        transaction?.amount ?? 0
+      );
+
+      if (!Number.isFinite(amount) || amount <= 0) {
+        return;
+      }
+
+      const type = String(
+        transaction?.type ||
+          transaction?.transactionType ||
+          ""
+      ).toUpperCase();
+
+      const sourceAccountNumber =
+        transaction?.sourceAccount?.accountNumber ||
+        transaction?.sourceAccountNumber ||
+        transaction?.fromAccount?.accountNumber ||
+        transaction?.fromAccountNumber ||
+        null;
+
+      const destinationAccountNumber =
+        transaction?.destinationAccount?.accountNumber ||
+        transaction?.destinationAccountNumber ||
+        transaction?.toAccount?.accountNumber ||
+        transaction?.toAccountNumber ||
+        null;
+
+      const isSourceAccount =
+        sourceAccountNumber
+          ? userAccountNumbers.has(
+              String(sourceAccountNumber)
+            )
+          : false;
+
+      const isDestinationAccount =
+        destinationAccountNumber
+          ? userAccountNumbers.has(
+              String(destinationAccountNumber)
+            )
+          : false;
+
+      let income = false;
+      let expense = false;
+
+      // ==========================================
+      // INCOME
+      // ==========================================
+
+      if (
+        type === "DEPOSIT" ||
+        type === "CREDIT" ||
+        type === "TRANSFER_IN"
+      ) {
+        income = true;
+      }
+
+      // ==========================================
+      // EXPENSE
+      // ==========================================
+
+      if (
+        type === "WITHDRAW" ||
+        type === "WITHDRAWAL" ||
+        type === "DEBIT" ||
+        type === "TRANSFER_OUT"
+      ) {
+        expense = true;
+      }
+
+      // ==========================================
+      // TRANSFER
+      // ==========================================
+
+      if (type === "TRANSFER") {
+        if (
+          isDestinationAccount &&
+          !isSourceAccount
+        ) {
+          income = true;
+          expense = false;
+        } else if (
+          isSourceAccount &&
+          !isDestinationAccount
+        ) {
+          expense = true;
+          income = false;
+        }
+      }
+
+      if (income) {
+        totalIncome += amount;
+      }
+
+      if (expense) {
+        totalExpense += amount;
+      }
+
+      // ==========================================
+      // LAST 30 DAYS
+      // ==========================================
+
+      const dateValue =
+        transaction?.createdAt ||
+        transaction?.date ||
+        transaction?.timestamp ||
+        transaction?.transactionDate;
+
+      if (!dateValue) {
+        return;
+      }
+
+      const transactionDate = new Date(dateValue);
+
+      if (
+        Number.isNaN(transactionDate.getTime()) ||
+        transactionDate < thirtyDaysAgo
+      ) {
+        return;
+      }
+
+      if (income) {
+        recentIncome += amount;
+      }
+
+      if (expense) {
+        recentExpense += amount;
+      }
+    });
+
+    return {
+      totalBalance,
+      totalIncome,
+      totalExpense,
+      recentIncome,
+      recentExpense,
+    };
+  }, [accounts, transactions]);
+
+  // ==========================================
+  // SAVING SCORE
+  // ==========================================
+
+  const savingScore = useMemo(() => {
+    const {
+      totalIncome,
+      totalExpense,
+    } = financialMetrics;
+
+    if (!totalIncome && !totalExpense) {
+      return 0;
+    }
+
+    if (totalIncome <= 0) {
+      return 0;
+    }
+
+    const savingRate =
+      ((totalIncome - totalExpense) /
+        totalIncome) *
+      100;
+
+    return Math.min(
+      100,
+      Math.max(
+        0,
+        Math.round(savingRate * 2)
+      )
+    );
+  }, [financialMetrics]);
+
+  // ==========================================
+  // SPENDING CONTROL SCORE
+  // ==========================================
+
+  const spendingControl = useMemo(() => {
+    const {
+      recentIncome,
+      recentExpense,
+    } = financialMetrics;
+
+    if (!recentIncome && !recentExpense) {
+      return 0;
+    }
+
+    if (recentIncome <= 0) {
+      return recentExpense <= 0 ? 100 : 20;
+    }
+
+    const expenseRatio =
+      recentExpense / recentIncome;
+
+    const score =
+      100 - expenseRatio * 100;
+
+    return Math.min(
+      100,
+      Math.max(
+        0,
+        Math.round(score)
+      )
+    );
+  }, [financialMetrics]);
+
+  // ==========================================
+  // SECURITY SCORE
+  // ==========================================
+
+  const securityScore = useMemo(() => {
+    if (!accounts.length) {
+      return 0;
+    }
+
+    const activeAccounts =
+      accounts.filter(
+        (account) =>
+          String(
+            account?.status || ""
+          ).toUpperCase() === "ACTIVE"
+      ).length;
+
+    const activeRatio =
+      activeAccounts / accounts.length;
+
+    return Math.min(
+      100,
+      Math.max(
+        0,
+        Math.round(activeRatio * 100)
+      )
+    );
+  }, [accounts]);
+
+  // ==========================================
+  // OVERALL FINANCIAL SCORE
+  // ==========================================
+
+  const score = useMemo(() => {
+    if (
+      !accounts.length &&
+      !transactions.length
+    ) {
+      return 0;
+    }
+
+    const calculatedScore =
+      savingScore * 0.45 +
+      spendingControl * 0.35 +
+      securityScore * 0.20;
+
+    return Math.min(
+      100,
+      Math.max(
+        0,
+        Math.round(calculatedScore)
+      )
+    );
+  }, [
+    accounts,
+    transactions,
+    savingScore,
+    spendingControl,
+    securityScore,
+  ]);
+
+  // ==========================================
+  // SCORE STATUS
+  // ==========================================
+
+  const scoreStatus = useMemo(() => {
+    if (score >= 80) {
+      return {
+        status: "Healthy",
+        title: "Excellent Financial Health",
+        description:
+          "Your financial activity is showing healthy patterns. SmartBank AI recommends maintaining your current savings strategy.",
+      };
+    }
+
+    if (score >= 60) {
+      return {
+        status: "Stable",
+        title: "Good Financial Health",
+        description:
+          "Your financial habits are generally stable. SmartBank AI recommends improving your savings consistency and monitoring expenses.",
+      };
+    }
+
+    if (score >= 40) {
+      return {
+        status: "Needs Attention",
+        title: "Financial Health Needs Attention",
+        description:
+          "Your recent financial activity could be improved. Reviewing expenses and strengthening your savings strategy may help.",
+      };
+    }
+
+    return {
+      status: "At Risk",
+      title: "Financial Health Needs Improvement",
+      description:
+        "Your current financial activity indicates areas that need attention. Consider reducing unnecessary expenses and building consistent savings.",
+    };
+  }, [score]);
+
+  // ==========================================
+  // SAFE SCORE
+  // ==========================================
+
+  const safeScore = Math.min(
+    100,
+    Math.max(
+      0,
+      Number(score) || 0
+    )
+  );
+
+  // ==========================================
+  // SCORE BREAKDOWN
+  // ==========================================
+
   const stats = [
     {
       title: "Saving Score",
@@ -43,7 +535,9 @@ const FinancialScore = ({
     },
   ];
 
-  const safeScore = Math.min(100, Math.max(0, Number(score) || 0));
+  // ==========================================
+  // RENDER
+  // ==========================================
 
   return (
     <motion.div
@@ -222,7 +716,7 @@ const FinancialScore = ({
           <span className="h-1.5 w-1.5 rounded-full bg-emerald-400 shadow-lg shadow-emerald-400/50" />
 
           <span className="text-[9px] font-semibold uppercase tracking-[0.15em] text-emerald-400">
-            {status}
+            {scoreStatus.status}
           </span>
         </div>
       </div>
@@ -322,7 +816,7 @@ const FinancialScore = ({
                   sm:text-6xl
                 "
               >
-                {safeScore}
+                {loading ? "—" : safeScore}
               </motion.h1>
 
               <p className="mt-0.5 text-[11px] font-medium text-slate-500">
@@ -368,13 +862,19 @@ const FinancialScore = ({
           />
 
           <span className="truncate text-[11px] font-bold text-emerald-400 sm:text-xs">
-            {title}
+            {loading
+              ? "Analyzing..."
+              : error
+                ? "Data Unavailable"
+                : scoreStatus.title}
           </span>
 
-          <ArrowUpRight
-            size={13}
-            className="shrink-0 text-emerald-400/70"
-          />
+          {!loading && !error && (
+            <ArrowUpRight
+              size={13}
+              className="shrink-0 text-emerald-400/70"
+            />
+          )}
         </div>
       </div>
 
@@ -395,8 +895,11 @@ const FinancialScore = ({
           sm:text-sm
         "
       >
-        Your financial habits are improving. SmartBank AI recommends
-        maintaining your current savings strategy.
+        {loading
+          ? "SmartBank AI is analyzing your accounts and transaction activity."
+          : error
+            ? "Financial health data could not be loaded right now."
+            : scoreStatus.description}
       </p>
 
       {/* =========================================
@@ -418,7 +921,10 @@ const FinancialScore = ({
 
           const safeValue = Math.min(
             100,
-            Math.max(0, Number(item.value) || 0)
+            Math.max(
+              0,
+              Number(item.value) || 0
+            )
           );
 
           return (
@@ -483,7 +989,7 @@ const FinancialScore = ({
                     ${item.color}
                   `}
                 >
-                  {safeValue}%
+                  {loading ? "—" : `${safeValue}%`}
                 </span>
               </div>
 
@@ -507,7 +1013,9 @@ const FinancialScore = ({
                     width: 0,
                   }}
                   animate={{
-                    width: `${safeValue}%`,
+                    width: loading
+                      ? "0%"
+                      : `${safeValue}%`,
                   }}
                   transition={{
                     duration: 1,
