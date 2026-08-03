@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -15,18 +14,20 @@ import {
 import api from "../../services/api";
 
 const SpendingChart = () => {
+  const [accounts, setAccounts] = useState([]);
   const [transactions, setTransactions] = useState([]);
+
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
   // ==========================================
-  // FETCH TRANSACTIONS
+  // FETCH ACCOUNTS + TRANSACTIONS
   // ==========================================
 
   useEffect(() => {
     let mounted = true;
 
-    const fetchTransactions = async () => {
+    const fetchFinancialData = async () => {
       try {
         if (mounted) {
           setLoading(true);
@@ -37,6 +38,7 @@ const SpendingChart = () => {
 
         if (!token) {
           if (mounted) {
+            setAccounts([]);
             setTransactions([]);
             setLoading(false);
           }
@@ -44,32 +46,62 @@ const SpendingChart = () => {
           return;
         }
 
-        const response = await api.get("/transactions");
+        const [accountsResponse, transactionsResponse] =
+          await Promise.all([
+            api.get("/accounts"),
+            api.get("/transactions"),
+          ]);
 
         if (!mounted) {
           return;
         }
 
-        const responseData = response?.data;
+        const accountsData = accountsResponse?.data;
+        const transactionsData = transactionsResponse?.data;
 
-        if (!responseData?.success) {
-          setTransactions([]);
+        // ==========================================
+        // ACCOUNTS
+        // ==========================================
+
+        if (accountsData?.success) {
+          const accountList = Array.isArray(
+            accountsData?.data
+          )
+            ? accountsData.data
+            : [];
+
+          setAccounts(accountList);
+        } else {
+          setAccounts([]);
           setError(true);
-          return;
         }
 
-        const data = Array.isArray(responseData?.data)
-          ? responseData.data
-          : [];
+        // ==========================================
+        // TRANSACTIONS
+        // ==========================================
 
-        setTransactions(data);
+        if (transactionsData?.success) {
+          const transactionList = Array.isArray(
+            transactionsData?.data
+          )
+            ? transactionsData.data
+            : [];
+
+          setTransactions(transactionList);
+        } else {
+          setTransactions([]);
+          setError(true);
+        }
       } catch (err) {
         console.error(
-          "SPENDING CHART TRANSACTION ERROR:",
-          err?.response?.data || err?.message || err
+          "SPENDING CHART FINANCIAL DATA ERROR:",
+          err?.response?.data ||
+            err?.message ||
+            err
         );
 
         if (mounted) {
+          setAccounts([]);
           setTransactions([]);
           setError(true);
         }
@@ -80,12 +112,14 @@ const SpendingChart = () => {
       }
     };
 
-    fetchTransactions();
+    fetchFinancialData();
 
-    // Refresh chart whenever dashboard transaction/account
-    // data is updated.
+    // ==========================================
+    // REFRESH AFTER DASHBOARD UPDATE
+    // ==========================================
+
     const handleDashboardUpdate = () => {
-      fetchTransactions();
+      fetchFinancialData();
     };
 
     window.addEventListener(
@@ -102,6 +136,19 @@ const SpendingChart = () => {
       );
     };
   }, []);
+
+  // ==========================================
+  // BUILD USER ACCOUNT NUMBER SET
+  // ==========================================
+
+  const userAccountNumbers = useMemo(() => {
+    return new Set(
+      accounts
+        .map((account) => account?.accountNumber)
+        .filter(Boolean)
+        .map((accountNumber) => String(accountNumber))
+    );
+  }, [accounts]);
 
   // ==========================================
   // BUILD LAST 6 MONTHS DATA
@@ -131,47 +178,18 @@ const SpendingChart = () => {
     }
 
     // ==========================================
-    // COLLECT USER ACCOUNT NUMBERS
-    // ==========================================
-
-    const userAccountNumbers = new Set();
-
-    transactions.forEach((transaction) => {
-      const sourceAccountNumber =
-        transaction?.sourceAccount?.accountNumber ||
-        transaction?.sourceAccountNumber ||
-        transaction?.fromAccount?.accountNumber ||
-        transaction?.fromAccountNumber ||
-        null;
-
-      const destinationAccountNumber =
-        transaction?.destinationAccount?.accountNumber ||
-        transaction?.destinationAccountNumber ||
-        transaction?.toAccount?.accountNumber ||
-        transaction?.toAccountNumber ||
-        null;
-
-      if (sourceAccountNumber) {
-        userAccountNumbers.add(
-          String(sourceAccountNumber)
-        );
-      }
-
-      if (destinationAccountNumber) {
-        userAccountNumbers.add(
-          String(destinationAccountNumber)
-        );
-      }
-    });
-
-    // ==========================================
     // CLASSIFY TRANSACTIONS
     // ==========================================
 
     transactions.forEach((transaction) => {
-      const amount = Number(transaction?.amount ?? 0);
+      const amount = Number(
+        transaction?.amount ?? 0
+      );
 
-      if (!Number.isFinite(amount) || amount <= 0) {
+      if (
+        !Number.isFinite(amount) ||
+        amount <= 0
+      ) {
         return;
       }
 
@@ -187,7 +205,11 @@ const SpendingChart = () => {
 
       const transactionDate = new Date(dateValue);
 
-      if (Number.isNaN(transactionDate.getTime())) {
+      if (
+        Number.isNaN(
+          transactionDate.getTime()
+        )
+      ) {
         return;
       }
 
@@ -196,6 +218,10 @@ const SpendingChart = () => {
           transaction?.transactionType ||
           ""
       ).toUpperCase();
+
+      // ==========================================
+      // ACCOUNT NUMBERS
+      // ==========================================
 
       const sourceAccountNumber =
         transaction?.sourceAccount?.accountNumber ||
@@ -222,24 +248,22 @@ const SpendingChart = () => {
           : null;
 
       const isSourceAccount =
-        normalizedSourceAccount
-          ? userAccountNumbers.has(
-              normalizedSourceAccount
-            )
-          : false;
+        Boolean(normalizedSourceAccount) &&
+        userAccountNumbers.has(
+          normalizedSourceAccount
+        );
 
       const isDestinationAccount =
-        normalizedDestinationAccount
-          ? userAccountNumbers.has(
-              normalizedDestinationAccount
-            )
-          : false;
+        Boolean(normalizedDestinationAccount) &&
+        userAccountNumbers.has(
+          normalizedDestinationAccount
+        );
 
       let income = false;
       let expense = false;
 
       // ==========================================
-      // INCOME TRANSACTIONS
+      // DIRECT INCOME
       // ==========================================
 
       if (
@@ -251,7 +275,7 @@ const SpendingChart = () => {
       }
 
       // ==========================================
-      // EXPENSE TRANSACTIONS
+      // DIRECT EXPENSE
       // ==========================================
 
       if (
@@ -264,22 +288,42 @@ const SpendingChart = () => {
       }
 
       // ==========================================
-      // TRANSFER TRANSACTIONS
+      // TRANSFER
       // ==========================================
 
       if (type === "TRANSFER") {
+        // External account -> user's account
         if (
           isDestinationAccount &&
           !isSourceAccount
         ) {
           income = true;
           expense = false;
-        } else if (
+        }
+
+        // User's account -> external account
+        else if (
           isSourceAccount &&
           !isDestinationAccount
         ) {
           expense = true;
           income = false;
+        }
+
+        // User's own account -> user's own account
+        // Do not count as income or expense.
+        else if (
+          isSourceAccount &&
+          isDestinationAccount
+        ) {
+          income = false;
+          expense = false;
+        }
+
+        // Cannot confidently determine direction.
+        else {
+          income = false;
+          expense = false;
         }
       }
 
@@ -289,13 +333,19 @@ const SpendingChart = () => {
 
       const matchingMonth = months.find(
         (item) =>
-          item.year === transactionDate.getFullYear() &&
-          item.monthIndex === transactionDate.getMonth()
+          item.year ===
+            transactionDate.getFullYear() &&
+          item.monthIndex ===
+            transactionDate.getMonth()
       );
 
       if (!matchingMonth) {
         return;
       }
+
+      // ==========================================
+      // ADD TO MONTH
+      // ==========================================
 
       if (income) {
         matchingMonth.income += amount;
@@ -307,7 +357,7 @@ const SpendingChart = () => {
     });
 
     return months;
-  }, [transactions]);
+  }, [transactions, userAccountNumbers]);
 
   // ==========================================
   // AVERAGE INCOME
@@ -385,7 +435,12 @@ const SpendingChart = () => {
     }
 
     return "Your income and expenses are currently balanced. Continue monitoring your spending to maintain healthy cash flow.";
-  }, [data, loading, error, transactions.length]);
+  }, [
+    data,
+    loading,
+    error,
+    transactions.length,
+  ]);
 
   // ==========================================
   // CURRENCY FORMATTER
@@ -542,7 +597,6 @@ const SpendingChart = () => {
       ========================================= */}
 
       <div className="relative mt-6 grid grid-cols-1 gap-3 sm:grid-cols-2">
-
         {/* AVERAGE INCOME */}
 
         <div
@@ -623,7 +677,6 @@ const SpendingChart = () => {
       ========================================= */}
 
       <div className="relative mt-7 h-[280px] w-full sm:h-[320px]">
-
         {loading ? (
           <div className="flex h-full flex-col items-center justify-center">
             <div className="h-8 w-8 animate-spin rounded-full border-2 border-cyan-400/20 border-t-cyan-400" />
@@ -858,4 +911,3 @@ const SpendingChart = () => {
 };
 
 export default SpendingChart;
-

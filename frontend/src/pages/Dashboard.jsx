@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -11,6 +12,9 @@ import {
   ChevronRight,
   Clock3,
   Zap,
+  AlertCircle,
+  RefreshCw,
+  CreditCard,
 } from "lucide-react";
 
 import api from "../services/api";
@@ -52,10 +56,6 @@ const getTransactionFlow = (transaction, userAccountNumbers) => {
     Boolean(destinationAccountNumber) &&
     userAccountNumbers.has(destinationAccountNumber);
 
-  // ------------------------------------------
-  // DIRECT INCOME
-  // ------------------------------------------
-
   if (
     type === "DEPOSIT" ||
     type === "CREDIT" ||
@@ -63,10 +63,6 @@ const getTransactionFlow = (transaction, userAccountNumbers) => {
   ) {
     return "income";
   }
-
-  // ------------------------------------------
-  // DIRECT EXPENSE
-  // ------------------------------------------
 
   if (
     type === "WITHDRAW" ||
@@ -76,34 +72,21 @@ const getTransactionFlow = (transaction, userAccountNumbers) => {
     return "expense";
   }
 
-  // ------------------------------------------
-  // TRANSFER
-  // ------------------------------------------
-
   if (type === "TRANSFER") {
-    // Money received from an external account
     if (isDestinationAccount && !isSourceAccount) {
       return "income";
     }
 
-    // Money sent to an external account
     if (isSourceAccount && !isDestinationAccount) {
       return "expense";
     }
 
-    // User's own account -> user's own account
-    // Do not count it as income or expense.
     if (isSourceAccount && isDestinationAccount) {
       return "neutral";
     }
 
-    // Cannot confidently identify direction.
     return "neutral";
   }
-
-  // ------------------------------------------
-  // UNKNOWN / UNSUPPORTED TYPE
-  // ------------------------------------------
 
   return "neutral";
 };
@@ -122,10 +105,12 @@ const Dashboard = () => {
   const [accounts, setAccounts] = useState([]);
   const [accountsLoading, setAccountsLoading] = useState(true);
   const [accountsError, setAccountsError] = useState(false);
+  const [accountsRetryKey, setAccountsRetryKey] = useState(0);
 
   const [transactions, setTransactions] = useState([]);
   const [transactionsLoading, setTransactionsLoading] = useState(true);
   const [transactionsError, setTransactionsError] = useState(false);
+  const [transactionsRetryKey, setTransactionsRetryKey] = useState(0);
 
   // ==========================================
   // FINANCIAL SUMMARY
@@ -144,6 +129,16 @@ const Dashboard = () => {
   });
 
   const [summaryLoading, setSummaryLoading] = useState(true);
+
+  // ==========================================
+  // DASHBOARD-LEVEL LOADING
+  // ==========================================
+
+  const dashboardLoading =
+    userLoading ||
+    accountsLoading ||
+    transactionsLoading ||
+    summaryLoading;
 
   // ==========================================
   // LOAD AUTHENTICATED USER
@@ -256,6 +251,7 @@ const Dashboard = () => {
           if (mounted) {
             setAccounts([]);
             setAccountsLoading(false);
+            setAccountsError(true);
           }
 
           return;
@@ -273,6 +269,7 @@ const Dashboard = () => {
             : [];
 
           setAccounts(data);
+          setAccountsError(false);
         } else {
           setAccounts([]);
           setAccountsError(true);
@@ -313,7 +310,7 @@ const Dashboard = () => {
         handleDashboardUpdate
       );
     };
-  }, []);
+  }, [accountsRetryKey]);
 
   // ==========================================
   // FETCH TRANSACTIONS
@@ -333,6 +330,7 @@ const Dashboard = () => {
           if (mounted) {
             setTransactions([]);
             setTransactionsLoading(false);
+            setTransactionsError(true);
           }
 
           return;
@@ -350,13 +348,14 @@ const Dashboard = () => {
             : [];
 
           setTransactions(data);
+          setTransactionsError(false);
         } else {
           setTransactions([]);
           setTransactionsError(true);
         }
       } catch (error) {
         console.error(
-          "TRANSACTION ERROR:",
+          "TRANSACTION FETCH ERROR:",
           error?.response?.data || error?.message
         );
 
@@ -390,7 +389,7 @@ const Dashboard = () => {
         handleDashboardUpdate
       );
     };
-  }, []);
+  }, [transactionsRetryKey]);
 
   // ==========================================
   // FINANCIAL SUMMARY CALCULATION
@@ -402,27 +401,15 @@ const Dashboard = () => {
     }
 
     const calculateSummary = () => {
-      // ------------------------------------------
-      // TOTAL BALANCE
-      // ------------------------------------------
-
       const totalBalance = accounts.reduce((total, account) => {
         return total + Number(account?.balance || 0);
       }, 0);
-
-      // ------------------------------------------
-      // USER ACCOUNT NUMBERS
-      // ------------------------------------------
 
       const userAccountNumbers = new Set(
         accounts
           .map((account) => account?.accountNumber)
           .filter(Boolean)
       );
-
-      // ------------------------------------------
-      // CURRENT / PREVIOUS MONTH
-      // ------------------------------------------
 
       const now = new Date();
 
@@ -443,10 +430,6 @@ const Dashboard = () => {
 
       let previousMonthIncome = 0;
       let previousMonthExpense = 0;
-
-      // ------------------------------------------
-      // TRANSACTION CLASSIFICATION
-      // ------------------------------------------
 
       transactions.forEach((transaction) => {
         const amount = Number(transaction?.amount || 0);
@@ -476,15 +459,9 @@ const Dashboard = () => {
           userAccountNumbers
         );
 
-        // Neutral transactions such as internal transfers
-        // must not affect income or expense.
         if (flow === "neutral") {
           return;
         }
-
-        // ------------------------------------------
-        // CURRENT MONTH
-        // ------------------------------------------
 
         const isCurrentMonth =
           transactionDate.getFullYear() === currentYear &&
@@ -500,10 +477,6 @@ const Dashboard = () => {
           }
         }
 
-        // ------------------------------------------
-        // PREVIOUS MONTH
-        // ------------------------------------------
-
         const isPreviousMonth =
           transactionDate.getFullYear() === previousYear &&
           transactionDate.getMonth() === previousMonth;
@@ -518,10 +491,6 @@ const Dashboard = () => {
           }
         }
       });
-
-      // ------------------------------------------
-      // GROWTH CALCULATION
-      // ------------------------------------------
 
       const calculateGrowth = (current, previous) => {
         if (previous === 0) {
@@ -704,6 +673,113 @@ const Dashboard = () => {
   };
 
   // ==========================================
+  // RETRY HANDLERS — 5.10
+  // ==========================================
+
+  const retryAccounts = () => {
+    setAccountsError(false);
+    setAccountsRetryKey((value) => value + 1);
+  };
+
+  const retryTransactions = () => {
+    setTransactionsError(false);
+    setTransactionsRetryKey((value) => value + 1);
+  };
+
+  // ==========================================
+  // DASHBOARD-LEVEL LOADING SCREEN
+  // ==========================================
+
+  if (dashboardLoading) {
+    return (
+      <div className="relative min-h-screen overflow-hidden bg-[#020617] text-white">
+        <div className="pointer-events-none absolute inset-0 overflow-hidden">
+          <div className="absolute -left-48 top-20 h-[500px] w-[500px] rounded-full bg-blue-600/[0.08] blur-[150px]" />
+
+          <div className="absolute right-[-180px] top-[420px] h-[520px] w-[520px] rounded-full bg-cyan-500/[0.07] blur-[160px]" />
+
+          <div className="absolute left-[35%] top-[1100px] h-[420px] w-[420px] rounded-full bg-indigo-600/[0.05] blur-[150px]" />
+        </div>
+
+        <main className="relative z-10 mx-auto flex min-h-screen max-w-[1680px] items-center justify-center px-4 py-24 sm:px-6 lg:px-10 xl:px-12">
+          <motion.div
+            initial={{
+              opacity: 0,
+              scale: 0.97,
+            }}
+            animate={{
+              opacity: 1,
+              scale: 1,
+            }}
+            transition={{
+              duration: 0.45,
+              ease: "easeOut",
+            }}
+            className="relative w-full max-w-md overflow-hidden rounded-[2rem] border border-white/[0.08] bg-white/[0.035] p-8 text-center shadow-2xl shadow-black/30 backdrop-blur-2xl sm:p-10"
+          >
+            <div className="pointer-events-none absolute left-1/2 top-0 h-px w-[75%] -translate-x-1/2 bg-gradient-to-r from-transparent via-cyan-400/40 to-transparent" />
+
+            <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-cyan-400/[0.08] blur-[70px]" />
+
+            <div className="pointer-events-none absolute -bottom-20 -left-20 h-48 w-48 rounded-full bg-blue-500/[0.07] blur-[70px]" />
+
+            <div className="relative">
+              <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-2xl border border-cyan-400/15 bg-cyan-400/[0.07] shadow-lg shadow-cyan-500/[0.08]">
+                <div className="h-7 w-7 animate-spin rounded-full border-2 border-cyan-400/20 border-t-cyan-400" />
+              </div>
+
+              <div className="mt-6 flex items-center justify-center gap-2">
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-cyan-400 shadow-lg shadow-cyan-400/60" />
+
+                <p className="text-[10px] font-bold uppercase tracking-[0.24em] text-cyan-400">
+                  SmartBank AI
+                </p>
+              </div>
+
+              <h1 className="mt-3 text-2xl font-bold tracking-tight text-white sm:text-3xl">
+                Preparing your dashboard
+              </h1>
+
+              <p className="mx-auto mt-3 max-w-sm text-sm leading-6 text-slate-500">
+                Loading your accounts, transactions, and financial insights.
+              </p>
+
+              <div className="mt-7 rounded-2xl border border-white/[0.06] bg-black/20 p-4 text-left">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-medium text-slate-500">
+                    Financial data
+                  </span>
+
+                  <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-400">
+                    Loading
+                  </span>
+                </div>
+
+                <div className="mt-3 h-1.5 overflow-hidden rounded-full bg-white/[0.06]">
+                  <motion.div
+                    initial={{
+                      x: "-100%",
+                    }}
+                    animate={{
+                      x: "100%",
+                    }}
+                    transition={{
+                      duration: 1.4,
+                      repeat: Infinity,
+                      ease: "easeInOut",
+                    }}
+                    className="h-full w-1/2 rounded-full bg-gradient-to-r from-transparent via-cyan-400 to-transparent"
+                  />
+                </div>
+              </div>
+            </div>
+          </motion.div>
+        </main>
+      </div>
+    );
+  }
+
+  // ==========================================
   // RENDER
   // ==========================================
 
@@ -776,20 +852,12 @@ const Dashboard = () => {
 
               <div className="mt-6 flex flex-wrap items-center gap-3">
                 <div className="inline-flex items-center gap-2 rounded-xl border border-white/[0.07] bg-black/20 px-3.5 py-2.5 text-xs text-slate-400">
-                  <Clock3
-                    size={14}
-                    className="text-slate-500"
-                  />
-
+                  <Clock3 size={14} className="text-slate-500" />
                   Updated just now
                 </div>
 
                 <div className="inline-flex items-center gap-2 rounded-xl border border-white/[0.07] bg-black/20 px-3.5 py-2.5 text-xs text-slate-400">
-                  <Zap
-                    size={14}
-                    className="text-cyan-400"
-                  />
-
+                  <Zap size={14} className="text-cyan-400" />
                   AI-powered insights
                 </div>
               </div>
@@ -798,10 +866,7 @@ const Dashboard = () => {
             <div className="w-full max-w-sm rounded-2xl border border-emerald-400/10 bg-emerald-400/[0.045] p-4 shadow-xl shadow-emerald-500/[0.03]">
               <div className="flex items-center gap-3">
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-400/10 bg-emerald-400/[0.08]">
-                  <ShieldCheck
-                    size={20}
-                    className="text-emerald-400"
-                  />
+                  <ShieldCheck size={20} className="text-emerald-400" />
                 </div>
 
                 <div className="min-w-0">
@@ -841,6 +906,98 @@ const Dashboard = () => {
         >
           <BankCard />
         </motion.section>
+
+        {/* ==========================================
+            ACCOUNT ERROR / EMPTY STATE — 5.10
+        ========================================== */}
+
+        {accountsError && (
+          <motion.section
+            initial={{
+              opacity: 0,
+              y: 12,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            className="mt-6 overflow-hidden rounded-[1.5rem] border border-red-400/10 bg-red-400/[0.035] p-5 sm:p-6"
+          >
+            <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+              <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-red-400/10 bg-red-400/[0.07]">
+                <AlertCircle
+                  size={21}
+                  className="text-red-400"
+                />
+              </div>
+
+              <div className="min-w-0 flex-1">
+                <p className="text-sm font-semibold text-white">
+                  Unable to load your accounts
+                </p>
+
+                <p className="mt-1 text-xs leading-5 text-slate-500">
+                  We could not retrieve your account information right now.
+                  Your existing financial data has not been changed.
+                </p>
+              </div>
+
+              <button
+                type="button"
+                onClick={retryAccounts}
+                className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-red-400/15 bg-red-400/[0.07] px-4 py-2.5 text-xs font-bold text-red-300 transition hover:border-red-400/30 hover:bg-red-400/[0.12] hover:text-red-200"
+              >
+                <RefreshCw size={14} />
+                Retry
+              </button>
+            </div>
+          </motion.section>
+        )}
+
+        {!accountsError &&
+          !accountsLoading &&
+          accounts.length === 0 && (
+            <motion.section
+              initial={{
+                opacity: 0,
+                y: 12,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              className="mt-6 overflow-hidden rounded-[1.5rem] border border-cyan-400/10 bg-cyan-400/[0.025] p-5 sm:p-6"
+            >
+              <div className="flex flex-col gap-5 sm:flex-row sm:items-center">
+                <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-xl border border-cyan-400/10 bg-cyan-400/[0.07]">
+                  <CreditCard
+                    size={21}
+                    className="text-cyan-400"
+                  />
+                </div>
+
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-semibold text-white">
+                    No bank account connected
+                  </p>
+
+                  <p className="mt-1 text-xs leading-5 text-slate-500">
+                    Add your first account to start tracking balances,
+                    transactions, and financial insights.
+                  </p>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => openModal("Add Account")}
+                  className="inline-flex shrink-0 items-center justify-center gap-2 rounded-xl border border-cyan-400/15 bg-cyan-400/[0.07] px-4 py-2.5 text-xs font-bold text-cyan-300 transition hover:border-cyan-400/30 hover:bg-cyan-400/[0.12] hover:text-cyan-200"
+                >
+                  Add Account
+                  <ArrowUpRight size={14} />
+                </button>
+              </div>
+            </motion.section>
+          )}
 
         {/* ==========================================
             ACCOUNT STATS
@@ -883,11 +1040,7 @@ const Dashboard = () => {
             </div>
 
             <div className="inline-flex items-center gap-2 self-start rounded-full border border-white/[0.06] bg-white/[0.025] px-3 py-2 text-xs text-slate-500 sm:self-auto">
-              <Activity
-                size={13}
-                className="text-cyan-400"
-              />
-
+              <Activity size={13} className="text-cyan-400" />
               Live financial summary
             </div>
           </div>
@@ -916,9 +1069,7 @@ const Dashboard = () => {
                     <h3 className="mt-3 text-3xl font-bold tracking-[-0.03em] sm:text-4xl">
                       {summaryLoading || accountsError
                         ? "—"
-                        : formatCurrency(
-                            financialSummary.totalBalance
-                          )}
+                        : formatCurrency(financialSummary.totalBalance)}
                     </h3>
                   </div>
 
@@ -963,17 +1114,12 @@ const Dashboard = () => {
                   <h3 className="mt-3 text-3xl font-bold tracking-[-0.03em] text-white">
                     {summaryLoading || transactionsError
                       ? "—"
-                      : formatCurrency(
-                          financialSummary.monthlyIncome
-                        )}
+                      : formatCurrency(financialSummary.monthlyIncome)}
                   </h3>
                 </div>
 
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-emerald-400/10 bg-emerald-400/[0.08]">
-                  <TrendingUp
-                    size={20}
-                    className="text-emerald-400"
-                  />
+                  <TrendingUp size={20} className="text-emerald-400" />
                 </div>
               </div>
 
@@ -986,9 +1132,9 @@ const Dashboard = () => {
                 >
                   {summaryLoading
                     ? "Loading..."
-                    : formatGrowth(
-                        financialSummary.incomeGrowth
-                      )}
+                    : transactionsError
+                    ? "Unavailable"
+                    : formatGrowth(financialSummary.incomeGrowth)}
                 </span>
 
                 <span className="text-xs text-slate-500">
@@ -1017,17 +1163,12 @@ const Dashboard = () => {
                   <h3 className="mt-3 text-3xl font-bold tracking-[-0.03em] text-white">
                     {summaryLoading || transactionsError
                       ? "—"
-                      : formatCurrency(
-                          financialSummary.monthlyExpense
-                        )}
+                      : formatCurrency(financialSummary.monthlyExpense)}
                   </h3>
                 </div>
 
                 <div className="flex h-11 w-11 items-center justify-center rounded-xl border border-red-400/10 bg-red-400/[0.08]">
-                  <TrendingDown
-                    size={20}
-                    className="text-red-400"
-                  />
+                  <TrendingDown size={20} className="text-red-400" />
                 </div>
               </div>
 
@@ -1040,9 +1181,9 @@ const Dashboard = () => {
                 >
                   {summaryLoading
                     ? "Loading..."
-                    : formatGrowth(
-                        financialSummary.expenseGrowth
-                      )}
+                    : transactionsError
+                    ? "Unavailable"
+                    : formatGrowth(financialSummary.expenseGrowth)}
                 </span>
 
                 <span className="text-xs text-slate-500">
@@ -1090,54 +1231,104 @@ const Dashboard = () => {
             </button>
           </div>
 
-          <div className="mt-8 overflow-hidden rounded-[1.75rem] border border-white/[0.08] bg-white/[0.025] shadow-2xl shadow-black/20 backdrop-blur-xl">
-            <div className="hidden border-b border-white/[0.06] px-6 py-4 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 sm:grid sm:grid-cols-[1fr_auto]">
-              <span>Transaction</span>
-              <span>Amount</span>
-            </div>
+          {/* TRANSACTION ERROR STATE — 5.10 */}
 
-            {transactionsLoading && (
-              <div className="flex min-h-32 items-center justify-center gap-3 p-6 text-sm text-slate-400">
-                <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400/20 border-t-cyan-400" />
+          {transactionsError && (
+            <motion.div
+              initial={{
+                opacity: 0,
+                y: 10,
+              }}
+              animate={{
+                opacity: 1,
+                y: 0,
+              }}
+              className="mt-8 overflow-hidden rounded-[1.75rem] border border-red-400/10 bg-red-400/[0.035] p-6 shadow-xl shadow-black/10"
+            >
+              <div className="flex flex-col items-center justify-center text-center">
+                <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-red-400/10 bg-red-400/[0.07]">
+                  <AlertCircle
+                    size={24}
+                    className="text-red-400"
+                  />
+                </div>
 
-                Loading transactions...
+                <h3 className="mt-4 text-sm font-semibold text-white">
+                  Transactions could not be loaded
+                </h3>
+
+                <p className="mt-2 max-w-md text-xs leading-5 text-slate-500">
+                  Something went wrong while retrieving your latest
+                  transactions. Please try again.
+                </p>
+
+                <button
+                  type="button"
+                  onClick={retryTransactions}
+                  className="mt-5 inline-flex items-center gap-2 rounded-xl border border-red-400/15 bg-red-400/[0.07] px-4 py-2.5 text-xs font-bold text-red-300 transition hover:border-red-400/30 hover:bg-red-400/[0.12] hover:text-red-200"
+                >
+                  <RefreshCw size={14} />
+                  Retry transactions
+                </button>
               </div>
-            )}
+            </motion.div>
+          )}
 
-            {!transactionsLoading &&
-              transactions.length === 0 && (
-                <div className="flex min-h-48 flex-col items-center justify-center p-8 text-center">
-                  <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.03]">
-                    <Activity
-                      size={24}
-                      className="text-slate-600"
-                    />
-                  </div>
+          {/* TRANSACTION LIST / EMPTY STATE */}
 
-                  <p className="mt-4 text-sm font-semibold text-slate-400">
-                    {transactionsError
-                      ? "Unable to load transactions"
-                      : "No transactions found"}
-                  </p>
+          {!transactionsError && (
+            <div className="mt-8 overflow-hidden rounded-[1.75rem] border border-white/[0.08] bg-white/[0.025] shadow-2xl shadow-black/20 backdrop-blur-xl">
+              <div className="hidden border-b border-white/[0.06] px-6 py-4 text-[10px] font-bold uppercase tracking-[0.16em] text-slate-600 sm:grid sm:grid-cols-[1fr_auto]">
+                <span>Transaction</span>
+                <span>Amount</span>
+              </div>
 
-                  <p className="mt-1 text-xs text-slate-600">
-                    Your latest activity will appear here.
-                  </p>
+              {transactionsLoading && (
+                <div className="flex min-h-32 items-center justify-center gap-3 p-6 text-sm text-slate-400">
+                  <div className="h-5 w-5 animate-spin rounded-full border-2 border-cyan-400/20 border-t-cyan-400" />
+
+                  Loading transactions...
                 </div>
               )}
 
-            {!transactionsLoading &&
-              transactions.length > 0 && (
-                <div>
-                  {transactions
-                    .slice(0, 5)
-                    .map((item, index) => {
-                      const type =
-                        getTransactionType(item);
+              {!transactionsLoading &&
+                transactions.length === 0 && (
+                  <div className="flex min-h-56 flex-col items-center justify-center p-8 text-center">
+                    <div className="flex h-14 w-14 items-center justify-center rounded-2xl border border-white/[0.06] bg-white/[0.03]">
+                      <Activity
+                        size={24}
+                        className="text-slate-600"
+                      />
+                    </div>
+
+                    <p className="mt-4 text-sm font-semibold text-slate-400">
+                      No transactions yet
+                    </p>
+
+                    <p className="mt-1 max-w-sm text-xs leading-5 text-slate-600">
+                      Your deposits, withdrawals, and transfers will appear
+                      here once you start using your account.
+                    </p>
+
+                    <button
+                      type="button"
+                      onClick={() => openModal("Deposit")}
+                      className="mt-5 inline-flex items-center gap-2 rounded-xl border border-cyan-400/10 bg-cyan-400/[0.06] px-4 py-2.5 text-xs font-bold text-cyan-400 transition hover:border-cyan-400/25 hover:bg-cyan-400/[0.1]"
+                    >
+                      Make a transaction
+                      <ArrowUpRight size={14} />
+                    </button>
+                  </div>
+                )}
+
+              {!transactionsLoading &&
+                transactions.length > 0 && (
+                  <div>
+                    {transactions.slice(0, 5).map((item, index) => {
+                      const type = getTransactionType(item);
 
                       const income = type === "income";
                       const expense = type === "expense";
-                      const neutral = type === "neutral";
 
                       return (
                         <motion.div
@@ -1191,9 +1382,7 @@ const Dashboard = () => {
 
                               <div className="mt-1.5 flex items-center gap-2">
                                 <p className="text-xs text-slate-600">
-                                  {getTransactionDate(
-                                    item
-                                  )}
+                                  {getTransactionDate(item)}
                                 </p>
 
                                 <span className="h-1 w-1 rounded-full bg-slate-700" />
@@ -1240,9 +1429,10 @@ const Dashboard = () => {
                         </motion.div>
                       );
                     })}
-                </div>
-              )}
-          </div>
+                  </div>
+                )}
+            </div>
+          )}
         </section>
 
         {/* ==========================================
@@ -1329,10 +1519,7 @@ const Dashboard = () => {
 
             <div className="relative mb-7 flex items-center gap-4">
               <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/10 bg-cyan-400/[0.08]">
-                <Sparkles
-                  size={20}
-                  className="text-cyan-400"
-                />
+                <Sparkles size={20} className="text-cyan-400" />
               </div>
 
               <div>
@@ -1377,3 +1564,4 @@ const Dashboard = () => {
 };
 
 export default Dashboard;
+

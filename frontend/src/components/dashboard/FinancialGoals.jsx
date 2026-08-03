@@ -1,3 +1,4 @@
+
 import { useEffect, useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -12,7 +13,7 @@ import {
   AlertCircle,
 } from "lucide-react";
 
-import api from "../../api/axios";
+import api from "../../services/api";
 
 // ==========================================
 // ICON HELPER
@@ -720,3 +721,4 @@ const FinancialGoals = ({ onViewAll, onAddGoal }) => {
 };
 
 export default FinancialGoals;
+

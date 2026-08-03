@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
   Calculator,
@@ -9,12 +9,30 @@ import {
   TrendingDown,
   Wallet,
   CircleDollarSign,
+  Loader2,
 } from "lucide-react";
 
 const LoanCalculator = () => {
   const [amount, setAmount] = useState(500000);
   const [rate, setRate] = useState(8);
   const [years, setYears] = useState(5);
+  const [calculating, setCalculating] = useState(false);
+
+  // ==========================================
+  // CALCULATION LOADING STATE
+  // ==========================================
+
+  useEffect(() => {
+    setCalculating(true);
+
+    const timer = window.setTimeout(() => {
+      setCalculating(false);
+    }, 250);
+
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [amount, rate, years]);
 
   // ==========================================
   // LOAN CALCULATIONS
@@ -82,9 +100,7 @@ const LoanCalculator = () => {
       return;
     }
 
-    setAmount(
-      Math.min(Math.max(numericValue, 0), 10000000)
-    );
+    setAmount(Math.min(Math.max(numericValue, 0), 10000000));
   };
 
   const handleRateChange = (value) => {
@@ -138,9 +154,34 @@ const LoanCalculator = () => {
 
         <div className="flex items-start justify-between gap-4">
           <div className="flex items-center gap-3">
-            <div className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/15 bg-cyan-400/10 text-cyan-400 shadow-lg shadow-cyan-500/10">
-              <Calculator size={23} strokeWidth={1.8} />
-            </div>
+            <motion.div
+              animate={
+                calculating
+                  ? {
+                      scale: [1, 1.04, 1],
+                    }
+                  : {
+                      scale: 1,
+                    }
+              }
+              transition={{
+                duration: 0.5,
+              }}
+              className="flex h-12 w-12 shrink-0 items-center justify-center rounded-2xl border border-cyan-400/15 bg-cyan-400/10 text-cyan-400 shadow-lg shadow-cyan-500/10"
+            >
+              {calculating ? (
+                <Loader2
+                  size={23}
+                  strokeWidth={1.8}
+                  className="animate-spin"
+                />
+              ) : (
+                <Calculator
+                  size={23}
+                  strokeWidth={1.8}
+                />
+              )}
+            </motion.div>
 
             <div>
               <p className="text-[10px] font-semibold uppercase tracking-[0.2em] text-cyan-400">
@@ -158,8 +199,21 @@ const LoanCalculator = () => {
           </div>
 
           <div className="hidden items-center gap-1.5 rounded-full border border-cyan-400/15 bg-cyan-400/10 px-3 py-1.5 text-[10px] font-semibold uppercase tracking-wider text-cyan-400 sm:flex">
-            <Sparkles size={12} />
-            AI Ready
+            {calculating ? (
+              <>
+                <Loader2
+                  size={12}
+                  className="animate-spin"
+                />
+
+                Calculating
+              </>
+            ) : (
+              <>
+                <Sparkles size={12} />
+                AI Ready
+              </>
+            )}
           </div>
         </div>
 
@@ -195,6 +249,7 @@ const LoanCalculator = () => {
                       size={15}
                       className="text-cyan-400"
                     />
+
                     Loan Amount
                   </label>
 
@@ -248,6 +303,7 @@ const LoanCalculator = () => {
                       size={15}
                       className="text-cyan-400"
                     />
+
                     Interest Rate
                   </label>
 
@@ -301,6 +357,7 @@ const LoanCalculator = () => {
                       size={15}
                       className="text-cyan-400"
                     />
+
                     Loan Tenure
                   </label>
 
@@ -349,8 +406,21 @@ const LoanCalculator = () => {
           <div className="relative overflow-hidden rounded-3xl border border-cyan-400/10 bg-gradient-to-br from-cyan-500/[0.08] via-blue-500/[0.05] to-transparent p-5 sm:p-6">
             <div className="absolute right-0 top-0 h-32 w-32 rounded-full bg-cyan-400/10 blur-3xl" />
 
-            <div className="relative">
-              {/* EMI */}
+            <motion.div
+              animate={{
+                opacity: calculating ? 0.45 : 1,
+                filter: calculating
+                  ? "blur(1px)"
+                  : "blur(0px)",
+              }}
+              transition={{
+                duration: 0.2,
+              }}
+              className="relative"
+            >
+              {/* ==========================================
+                  EMI
+              ========================================== */}
 
               <div className="flex items-center justify-between">
                 <div>
@@ -358,17 +428,42 @@ const LoanCalculator = () => {
                     Estimated EMI
                   </p>
 
-                  <p className="mt-2 text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
-                    {formatMoney(calculations.emi)}
-                  </p>
+                  <div className="mt-2 flex min-h-[48px] items-center">
+                    {calculating ? (
+                      <div className="flex items-center gap-2 text-cyan-400">
+                        <Loader2
+                          size={20}
+                          className="animate-spin"
+                        />
+
+                        <span className="text-sm font-semibold">
+                          Calculating...
+                        </span>
+                      </div>
+                    ) : (
+                      <p className="text-3xl font-extrabold tracking-tight text-white sm:text-4xl">
+                        {formatMoney(
+                          calculations.emi
+                        )}
+                      </p>
+                    )}
+                  </div>
 
                   <p className="mt-1 text-xs text-slate-500">
-                    per month for {calculations.safeYears} years
+                    per month for{" "}
+                    {calculations.safeYears} years
                   </p>
                 </div>
 
                 <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-cyan-400/10 text-cyan-400">
-                  <Wallet size={21} />
+                  {calculating ? (
+                    <Loader2
+                      size={21}
+                      className="animate-spin"
+                    />
+                  ) : (
+                    <Wallet size={21} />
+                  )}
                 </div>
               </div>
 
@@ -383,7 +478,8 @@ const LoanCalculator = () => {
                   </span>
 
                   <span className="text-xs font-semibold text-cyan-400">
-                    {interestPercentage.toFixed(1)}% interest
+                    {interestPercentage.toFixed(1)}%
+                    interest
                   </span>
                 </div>
 
@@ -392,7 +488,9 @@ const LoanCalculator = () => {
                     animate={{
                       width: `${100 - interestPercentage}%`,
                     }}
-                    transition={{ duration: 0.4 }}
+                    transition={{
+                      duration: 0.4,
+                    }}
                     className="h-full bg-gradient-to-r from-blue-600 to-cyan-400"
                   />
 
@@ -400,7 +498,9 @@ const LoanCalculator = () => {
                     animate={{
                       width: `${interestPercentage}%`,
                     }}
-                    transition={{ duration: 0.4 }}
+                    transition={{
+                      duration: 0.4,
+                    }}
                     className="h-full bg-purple-400/70"
                   />
                 </div>
@@ -485,7 +585,7 @@ const LoanCalculator = () => {
                   </span>
                 </div>
               </div>
-            </div>
+            </motion.div>
           </div>
         </div>
 
@@ -495,10 +595,17 @@ const LoanCalculator = () => {
 
         <div className="mt-6 flex items-start gap-3 rounded-2xl border border-cyan-400/10 bg-gradient-to-r from-cyan-500/[0.08] to-blue-500/[0.06] p-4">
           <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-cyan-400/10">
-            <Sparkles
-              size={17}
-              className="text-cyan-400"
-            />
+            {calculating ? (
+              <Loader2
+                size={17}
+                className="animate-spin text-cyan-400"
+              />
+            ) : (
+              <Sparkles
+                size={17}
+                className="text-cyan-400"
+              />
+            )}
           </div>
 
           <div>

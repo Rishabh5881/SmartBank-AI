@@ -1,4 +1,3 @@
-
 import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import {
@@ -120,7 +119,10 @@ const FinancialScore = () => {
 
     fetchFinancialData();
 
-    // Refresh score whenever dashboard data changes.
+    // ==========================================
+    // DASHBOARD REFRESH
+    // ==========================================
+
     const handleDashboardUpdate = () => {
       fetchFinancialData();
     };
@@ -154,10 +156,12 @@ const FinancialScore = () => {
             0
         );
 
-        return sum +
+        return (
+          sum +
           (Number.isFinite(balance)
             ? Math.max(0, balance)
-            : 0);
+            : 0)
+        );
       },
       0
     );
@@ -276,6 +280,10 @@ const FinancialScore = () => {
           income = false;
         }
       }
+
+      // ==========================================
+      // TOTAL INCOME / EXPENSE
+      // ==========================================
 
       if (income) {
         totalIncome += amount;
@@ -1084,3 +1092,4 @@ const FinancialScore = () => {
 };
 
 export default FinancialScore;
+
