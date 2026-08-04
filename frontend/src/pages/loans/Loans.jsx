@@ -1,4 +1,5 @@
-import { useMemo, useState } from "react";
+
+import { useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 
 import {
@@ -17,6 +18,7 @@ import {
 } from "lucide-react";
 
 import ApplyLoanModal from "../../components/loans/ApplyLoan";
+import api from "../../services/api";
 
 const Loans = () => {
   // ==========================================
@@ -80,6 +82,46 @@ const Loans = () => {
   const [loanAmount, setLoanAmount] = useState(100000);
   const [interestRate, setInterestRate] = useState(7.5);
   const [loanTenure, setLoanTenure] = useState(20);
+
+  // ==========================================
+  // LOANS API STATE
+  // ==========================================
+
+  const [userLoans, setUserLoans] = useState([]);
+
+  // ==========================================
+  // LOANS API CONNECT
+  // ==========================================
+
+  useEffect(() => {
+    let isMounted = true;
+
+    const fetchLoans = async () => {
+      try {
+        const response = await api.get("/loans");
+
+        const fetchedLoans = Array.isArray(
+          response?.data?.data
+        )
+          ? response.data.data
+          : [];
+
+        if (isMounted) {
+          setUserLoans(fetchedLoans);
+        }
+      } catch (error) {
+        if (isMounted) {
+          setUserLoans([]);
+        }
+      }
+    };
+
+    fetchLoans();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
 
   // ==========================================
   // EMI CALCULATION
@@ -175,8 +217,6 @@ const Loans = () => {
           }}
           className="relative overflow-hidden rounded-[32px] border border-white/[0.08] bg-white/[0.025] p-6 sm:p-8 lg:p-10"
         >
-          {/* Background Glow */}
-
           <div className="pointer-events-none absolute -right-24 -top-24 h-72 w-72 rounded-full bg-cyan-400/[0.08] blur-3xl" />
 
           <div className="pointer-events-none absolute -bottom-32 left-1/3 h-72 w-72 rounded-full bg-blue-600/[0.08] blur-3xl" />
@@ -359,13 +399,9 @@ const Loans = () => {
                   className="group relative overflow-hidden rounded-[28px] border border-white/[0.08] bg-white/[0.035] p-5 shadow-xl shadow-black/10 transition-colors duration-300 hover:border-white/[0.14]"
                 >
 
-                  {/* Top Gradient */}
-
                   <div
                     className={`absolute inset-x-0 top-0 h-1 bg-gradient-to-r ${loan.color}`}
                   />
-
-                  {/* Glow */}
 
                   <div
                     className={`pointer-events-none absolute -right-16 -top-16 h-36 w-36 rounded-full bg-gradient-to-br ${loan.color} opacity-[0.08] blur-3xl transition-opacity duration-300 group-hover:opacity-[0.16]`}
