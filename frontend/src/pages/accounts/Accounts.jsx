@@ -30,6 +30,7 @@ import {
   Loader2,
   CheckCircle2,
   AlertCircle,
+  Trash2,
 } from "lucide-react";
 
 import api from "../../services/api";
@@ -39,6 +40,11 @@ const Accounts = () => {
   const [copiedAccount, setCopiedAccount] = useState(null);
   const [selectedAccount, setSelectedAccount] = useState(null);
   const [showAccountModal, setShowAccountModal] = useState(false);
+
+  const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
+  const [deletingAccount, setDeletingAccount] = useState(false);
+  const [deleteAccountError, setDeleteAccountError] = useState("");
+  const [deleteAccountSuccess, setDeleteAccountSuccess] = useState("");
 
   const [showAddAccountModal, setShowAddAccountModal] = useState(false);
   const [accountType, setAccountType] = useState("SAVINGS");
@@ -146,29 +152,22 @@ const Accounts = () => {
 
   const normalizedAccounts = useMemo(() => {
     return accounts.map((account, index) => {
-      const accountType =
+      const rawAccountType =
         account?.accountType ||
         account?.type ||
-        "Savings Account";
+        "SAVINGS";
 
-      const normalizedType = String(accountType)
+      const normalizedType = String(rawAccountType)
         .replace(/_/g, " ")
         .toLowerCase();
 
       const isCurrent = normalizedType.includes("current");
-      const isSalary = normalizedType.includes("salary");
 
-      const Icon = isCurrent
-        ? Building2
-        : isSalary
-          ? Wallet
-          : PiggyBank;
+      const Icon = isCurrent ? Building2 : PiggyBank;
 
       const gradient = isCurrent
         ? "from-violet-600 via-purple-600 to-indigo-600"
-        : isSalary
-          ? "from-emerald-500 via-green-500 to-teal-500"
-          : "from-blue-600 via-blue-500 to-cyan-400";
+        : "from-blue-600 via-blue-500 to-cyan-400";
 
       const rawBalance =
         account?.balance ??
@@ -206,7 +205,7 @@ const Accounts = () => {
           account?._id ||
           `account-${index}`,
 
-        type: String(accountType).replace(/_/g, " "),
+        type: String(rawAccountType).replace(/_/g, " "),
 
         number: String(accountNumber),
 
@@ -349,12 +348,114 @@ const Accounts = () => {
 
   const openAccountDetails = (account) => {
     setSelectedAccount(account);
+    setDeleteAccountError("");
+    setDeleteAccountSuccess("");
+    setShowDeleteConfirm(false);
     setShowAccountModal(true);
   };
 
   const closeAccountModal = () => {
+    if (deletingAccount) {
+      return;
+    }
+
     setShowAccountModal(false);
     setSelectedAccount(null);
+    setShowDeleteConfirm(false);
+    setDeleteAccountError("");
+    setDeleteAccountSuccess("");
+  };
+
+  const openDeleteConfirmation = () => {
+    if (!selectedAccount) {
+      return;
+    }
+
+    setDeleteAccountError("");
+    setDeleteAccountSuccess("");
+    setShowDeleteConfirm(true);
+  };
+
+  const cancelDeleteConfirmation = () => {
+    if (deletingAccount) {
+      return;
+    }
+
+    setShowDeleteConfirm(false);
+    setDeleteAccountError("");
+  };
+
+  const handleDeleteAccount = async () => {
+    if (deletingAccount || !selectedAccount?.number) {
+      return;
+    }
+
+    setDeleteAccountError("");
+    setDeleteAccountSuccess("");
+
+    try {
+      setDeletingAccount(true);
+
+      const accountNumber = String(
+        selectedAccount.number
+      );
+
+      const response = await api.delete(
+        `/accounts/number/${accountNumber}`
+      );
+
+      const responseData = response?.data;
+
+      if (!responseData?.success) {
+        throw new Error(
+          responseData?.message ||
+            "Unable to delete account."
+        );
+      }
+
+      setDeleteAccountSuccess(
+        responseData?.message ||
+          "Account deleted successfully."
+      );
+
+      setShowDeleteConfirm(false);
+
+      setAccounts((currentAccounts) =>
+        currentAccounts.filter(
+          (account) =>
+            String(
+              account?.accountNumber ||
+                account?.accountNo ||
+                account?.number ||
+                ""
+            ) !== accountNumber
+        )
+      );
+
+      window.dispatchEvent(
+        new Event("dashboardUpdated")
+      );
+
+      setTimeout(() => {
+        setShowAccountModal(false);
+        setSelectedAccount(null);
+        setDeleteAccountError("");
+        setDeleteAccountSuccess("");
+      }, 800);
+    } catch (err) {
+      console.error(
+        "DELETE ACCOUNT ERROR:",
+        err?.response?.data || err?.message || err
+      );
+
+      setDeleteAccountError(
+        err?.response?.data?.message ||
+          err?.message ||
+          "Unable to delete account. Please try again."
+      );
+    } finally {
+      setDeletingAccount(false);
+    }
   };
 
   const openAddAccountModal = () => {
@@ -463,13 +564,11 @@ const Accounts = () => {
 
   return (
     <div className="min-h-screen bg-[#020617] px-4 pb-16 pt-28 text-white sm:px-6 lg:px-10">
-
       <div className="pointer-events-none fixed left-0 top-20 -z-0 h-[420px] w-[420px] rounded-full bg-blue-600/[0.06] blur-[140px]" />
 
       <div className="pointer-events-none fixed bottom-0 right-0 -z-0 h-[450px] w-[450px] rounded-full bg-cyan-500/[0.05] blur-[150px]" />
 
       <div className="relative z-10 mx-auto max-w-[1550px]">
-
         <motion.div
           initial={{
             opacity: 0,
@@ -1300,193 +1399,344 @@ const Accounts = () => {
                   <button
                     type="button"
                     onClick={closeAccountModal}
-                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] text-slate-500 transition hover:bg-white/[0.08] hover:text-white"
+                    disabled={deletingAccount}
+                    className="flex h-9 w-9 items-center justify-center rounded-xl bg-white/[0.04] text-slate-500 transition hover:bg-white/[0.08] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
                   >
                     <X size={18} />
                   </button>
                 </div>
 
-                <div className="mt-7 rounded-[24px] border border-cyan-400/10 bg-gradient-to-br from-blue-600/20 to-cyan-500/10 p-6">
-                  <p className="text-xs text-slate-500">
-                    Current Balance
-                  </p>
+                {deleteAccountSuccess && (
+                  <motion.div
+                    initial={{
+                      opacity: 0,
+                      y: -5,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                    }}
+                    className="mt-5 flex gap-3 rounded-2xl border border-emerald-400/10 bg-emerald-400/[0.05] p-4"
+                  >
+                    <CheckCircle2
+                      size={18}
+                      className="mt-0.5 shrink-0 text-emerald-400"
+                    />
 
-                  <h3 className="mt-2 text-4xl font-bold">
-                    {formatBalance(
-                      selectedAccount.balance
-                    )}
-                  </h3>
-
-                  <div className="mt-5 flex items-center justify-between">
                     <div>
-                      <p className="text-[10px] text-slate-600">
-                        Available
+                      <p className="text-xs font-semibold text-emerald-300">
+                        Account deleted
                       </p>
 
-                      <p className="mt-1 text-sm font-semibold text-slate-300">
-                        {formatBalance(
-                          selectedAccount.available
-                        )}
+                      <p className="mt-1 text-[11px] leading-5 text-emerald-300/70">
+                        {deleteAccountSuccess}
                       </p>
                     </div>
+                  </motion.div>
+                )}
 
-                    <div className="text-right">
-                      <p className="text-[10px] text-slate-600">
-                        Pending
+                {deleteAccountError && (
+                  <motion.div
+                    initial={{
+                      opacity: 0,
+                      y: -5,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                    }}
+                    className="mt-5 flex gap-3 rounded-2xl border border-red-400/10 bg-red-400/[0.05] p-4"
+                  >
+                    <AlertCircle
+                      size={18}
+                      className="mt-0.5 shrink-0 text-red-400"
+                    />
+
+                    <div>
+                      <p className="text-xs font-semibold text-red-300">
+                        Account deletion failed
                       </p>
 
-                      <p className="mt-1 text-sm font-semibold text-amber-400">
-                        {formatBalance(
-                          selectedAccount.pending
-                        )}
+                      <p className="mt-1 text-[11px] leading-5 text-red-300/70">
+                        {deleteAccountError}
                       </p>
                     </div>
-                  </div>
-                </div>
+                  </motion.div>
+                )}
 
-                <div className="mt-5 grid gap-3 sm:grid-cols-2">
-                  <DetailBox
-                    label="Account Number"
-                    value={
-                      selectedAccount.number ||
-                      "Not available"
-                    }
-                  />
+                {!showDeleteConfirm && (
+                  <>
+                    <div className="mt-7 rounded-[24px] border border-cyan-400/10 bg-gradient-to-br from-blue-600/20 to-cyan-500/10 p-6">
+                      <p className="text-xs text-slate-500">
+                        Current Balance
+                      </p>
 
-                  <DetailBox
-                    label="Status"
-                    value={
-                      selectedAccount.status ||
-                      "Not available"
-                    }
-                    valueClass="text-emerald-400"
-                  />
+                      <h3 className="mt-2 text-4xl font-bold">
+                        {formatBalance(
+                          selectedAccount.balance
+                        )}
+                      </h3>
 
-                  <DetailBox
-                    label="Interest Rate"
-                    value={
-                      selectedAccount.interest
-                        ? String(
-                            selectedAccount.interest
-                          ).includes("%")
-                          ? selectedAccount.interest
-                          : `${selectedAccount.interest}%`
-                        : "Not available"
-                    }
-                  />
+                      <div className="mt-5 flex items-center justify-between">
+                        <div>
+                          <p className="text-[10px] text-slate-600">
+                            Available
+                          </p>
 
-                  <DetailBox
-                    label="Opened"
-                    value={formatDate(
-                      selectedAccount.opened
-                    )}
-                  />
+                          <p className="mt-1 text-sm font-semibold text-slate-300">
+                            {formatBalance(
+                              selectedAccount.available
+                            )}
+                          </p>
+                        </div>
 
-                  <DetailBox
-                    label="Transactions"
-                    value={
-                      selectedAccount.transactions
-                        ? `${selectedAccount.transactions}`
-                        : "Not available"
-                    }
-                  />
+                        <div className="text-right">
+                          <p className="text-[10px] text-slate-600">
+                            Pending
+                          </p>
 
-                  <DetailBox
-                    label="Monthly Growth"
-                    value={
-                      selectedAccount.growth
-                        ? String(
-                            selectedAccount.growth
-                          ).includes("%")
-                          ? selectedAccount.growth
-                          : `+${selectedAccount.growth}%`
-                        : "Not available"
-                    }
-                    valueClass="text-emerald-400"
-                  />
-                </div>
+                          <p className="mt-1 text-sm font-semibold text-amber-400">
+                            {formatBalance(
+                              selectedAccount.pending
+                            )}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
 
-                <div className="mt-5 rounded-2xl border border-white/[0.06] bg-white/[0.025] p-5">
-                  <div className="flex items-center justify-between">
-                    <div className="flex items-center gap-2">
-                      <BarChart3
-                        size={16}
-                        className="text-cyan-400"
+                    <div className="mt-5 grid gap-3 sm:grid-cols-2">
+                      <DetailBox
+                        label="Account Number"
+                        value={
+                          selectedAccount.number ||
+                          "Not available"
+                        }
                       />
 
-                      <span className="text-sm font-semibold">
-                        Account Health
-                      </span>
+                      <DetailBox
+                        label="Status"
+                        value={
+                          selectedAccount.status ||
+                          "Not available"
+                        }
+                        valueClass="text-emerald-400"
+                      />
+
+                      <DetailBox
+                        label="Interest Rate"
+                        value={
+                          selectedAccount.interest
+                            ? String(
+                                selectedAccount.interest
+                              ).includes("%")
+                              ? selectedAccount.interest
+                              : `${selectedAccount.interest}%`
+                            : "Not available"
+                        }
+                      />
+
+                      <DetailBox
+                        label="Opened"
+                        value={formatDate(
+                          selectedAccount.opened
+                        )}
+                      />
+
+                      <DetailBox
+                        label="Transactions"
+                        value={
+                          selectedAccount.transactions
+                            ? `${selectedAccount.transactions}`
+                            : "Not available"
+                        }
+                      />
+
+                      <DetailBox
+                        label="Monthly Growth"
+                        value={
+                          selectedAccount.growth
+                            ? String(
+                                selectedAccount.growth
+                              ).includes("%")
+                              ? selectedAccount.growth
+                              : `+${selectedAccount.growth}%`
+                            : "Not available"
+                        }
+                        valueClass="text-emerald-400"
+                      />
                     </div>
 
-                    <span className="text-sm font-bold text-emerald-400">
-                      {selectedAccount.health
-                        ? `${selectedAccount.health}/100`
-                        : "Not available"}
-                    </span>
-                  </div>
+                    <div className="mt-5 rounded-2xl border border-white/[0.06] bg-white/[0.025] p-5">
+                      <div className="flex items-center justify-between">
+                        <div className="flex items-center gap-2">
+                          <BarChart3
+                            size={16}
+                            className="text-cyan-400"
+                          />
 
-                  <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
-                    <div
-                      className="h-full rounded-full bg-emerald-400 transition-all duration-700"
-                      style={{
-                        width: `${
-                          selectedAccount.health || 0
-                        }%`,
-                      }}
-                    />
-                  </div>
+                          <span className="text-sm font-semibold">
+                            Account Health
+                          </span>
+                        </div>
 
-                  <p className="mt-3 text-xs text-slate-600">
-                    Account health information will reflect backend data when
-                    available.
-                  </p>
-                </div>
+                        <span className="text-sm font-bold text-emerald-400">
+                          {selectedAccount.health
+                            ? `${selectedAccount.health}/100`
+                            : "Not available"}
+                        </span>
+                      </div>
 
-                <div className="mt-5 flex items-center gap-3 rounded-2xl border border-emerald-400/10 bg-emerald-400/[0.035] p-4">
-                  <LockKeyhole
-                    size={17}
-                    className="text-emerald-400"
-                  />
+                      <div className="mt-4 h-2 overflow-hidden rounded-full bg-white/[0.06]">
+                        <div
+                          className="h-full rounded-full bg-emerald-400 transition-all duration-700"
+                          style={{
+                            width: `${
+                              selectedAccount.health || 0
+                            }%`,
+                          }}
+                        />
+                      </div>
 
-                  <div>
-                    <p className="text-xs font-semibold text-slate-200">
-                      Account secured
-                    </p>
+                      <p className="mt-3 text-xs text-slate-600">
+                        Account health information will reflect backend data when
+                        available.
+                      </p>
+                    </div>
 
-                    <p className="mt-1 text-[10px] text-slate-600">
-                      SmartBank AI monitoring is active.
-                    </p>
-                  </div>
-                </div>
+                    <div className="mt-5 flex items-center gap-3 rounded-2xl border border-emerald-400/10 bg-emerald-400/[0.035] p-4">
+                      <LockKeyhole
+                        size={17}
+                        className="text-emerald-400"
+                      />
 
-                <div className="mt-6 grid gap-3 sm:grid-cols-2">
-                  <button
-                    type="button"
-                    onClick={() =>
-                      copyAccount(
-                        selectedAccount.number
-                      )
-                    }
-                    disabled={
-                      !selectedAccount.number
-                    }
-                    className="flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-xs font-semibold text-slate-300 transition hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      <div>
+                        <p className="text-xs font-semibold text-slate-200">
+                          Account secured
+                        </p>
+
+                        <p className="mt-1 text-[10px] text-slate-600">
+                          SmartBank AI monitoring is active.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={() =>
+                          copyAccount(
+                            selectedAccount.number
+                          )
+                        }
+                        disabled={
+                          !selectedAccount.number
+                        }
+                        className="flex items-center justify-center gap-2 rounded-xl border border-white/[0.08] bg-white/[0.035] px-4 py-3 text-xs font-semibold text-slate-300 transition hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Copy size={15} />
+
+                        Copy Account Number
+                      </button>
+
+                      <button
+                        type="button"
+                        className="flex items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 text-xs font-bold text-slate-950 transition hover:bg-cyan-300"
+                      >
+                        <ExternalLink size={15} />
+
+                        View Transactions
+                      </button>
+                    </div>
+
+                    <div className="mt-4 border-t border-white/[0.06] pt-4">
+                      <button
+                        type="button"
+                        onClick={openDeleteConfirmation}
+                        disabled={
+                          deletingAccount ||
+                          !selectedAccount.number
+                        }
+                        className="flex w-full items-center justify-center gap-2 rounded-xl border border-red-400/15 bg-red-400/[0.04] px-4 py-3 text-xs font-semibold text-red-400 transition hover:border-red-400/30 hover:bg-red-400/[0.08] hover:text-red-300 disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        <Trash2 size={15} />
+
+                        Delete Account
+                      </button>
+                    </div>
+                  </>
+                )}
+
+                {showDeleteConfirm && (
+                  <motion.div
+                    initial={{
+                      opacity: 0,
+                      y: 10,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      y: 0,
+                    }}
+                    className="mt-7 rounded-[24px] border border-red-400/15 bg-red-400/[0.045] p-6"
                   >
-                    <Copy size={15} />
+                    <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-2xl bg-red-400/10 text-red-400">
+                      <Trash2 size={24} />
+                    </div>
 
-                    Copy Account Number
-                  </button>
+                    <div className="mt-5 text-center">
+                      <h3 className="text-lg font-bold text-white">
+                        Delete this account?
+                      </h3>
 
-                  <button
-                    type="button"
-                    className="flex items-center justify-center gap-2 rounded-xl bg-cyan-400 px-4 py-3 text-xs font-bold text-slate-950 transition hover:bg-cyan-300"
-                  >
-                    <ExternalLink size={15} />
+                      <p className="mt-2 text-xs leading-5 text-slate-500">
+                        You are about to permanently delete account{" "}
+                        <span className="font-mono font-semibold text-slate-300">
+                          {selectedAccount.number}
+                        </span>
+                        .
+                      </p>
 
-                    View Transactions
-                  </button>
-                </div>
+                      <p className="mt-3 text-xs leading-5 text-red-300/70">
+                        The account can only be deleted when its balance is
+                        ₹0.00 and it has no transaction history.
+                      </p>
+                    </div>
+
+                    <div className="mt-6 grid gap-3 sm:grid-cols-2">
+                      <button
+                        type="button"
+                        onClick={cancelDeleteConfirmation}
+                        disabled={deletingAccount}
+                        className="rounded-xl border border-white/[0.08] bg-white/[0.035] px-4 py-3.5 text-xs font-semibold text-slate-400 transition hover:bg-white/[0.07] hover:text-white disabled:cursor-not-allowed disabled:opacity-40"
+                      >
+                        Cancel
+                      </button>
+
+                      <button
+                        type="button"
+                        onClick={handleDeleteAccount}
+                        disabled={deletingAccount}
+                        className="flex items-center justify-center gap-2 rounded-xl bg-red-500 px-4 py-3.5 text-xs font-bold text-white transition hover:bg-red-400 disabled:cursor-not-allowed disabled:opacity-60"
+                      >
+                        {deletingAccount ? (
+                          <>
+                            <Loader2
+                              size={15}
+                              className="animate-spin"
+                            />
+
+                            Deleting...
+                          </>
+                        ) : (
+                          <>
+                            <Trash2 size={15} />
+
+                            Yes, Delete Account
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  </motion.div>
+                )}
               </motion.div>
             </motion.div>
           )}
@@ -1638,9 +1888,7 @@ const Accounts = () => {
                       id="accountType"
                       value={accountType}
                       onChange={(event) =>
-                        setAccountType(
-                          event.target.value
-                        )
+                        setAccountType(event.target.value)
                       }
                       disabled={creatingAccount}
                       className="w-full appearance-none rounded-2xl border border-white/[0.08] bg-white/[0.035] px-4 py-3.5 pr-11 text-sm font-medium text-white outline-none transition focus:border-cyan-400/40 focus:bg-cyan-400/[0.03] focus:ring-2 focus:ring-cyan-400/10 disabled:cursor-not-allowed disabled:opacity-50"
@@ -1657,13 +1905,6 @@ const Accounts = () => {
                         className="bg-[#07101f]"
                       >
                         Current Account
-                      </option>
-
-                      <option
-                        value="SALARY"
-                        className="bg-[#07101f]"
-                      >
-                        Salary Account
                       </option>
                     </select>
 

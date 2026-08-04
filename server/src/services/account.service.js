@@ -155,6 +155,49 @@ async function getAccountByIdForUser(
 }
 
 // ======================
+// DELETE ACCOUNT
+// ======================
+
+async function deleteAccountForUser(
+  userId,
+  accountNumber
+) {
+  if (!userId) {
+    throw new Error("User ID is required");
+  }
+
+  if (!accountNumber) {
+    throw new Error("Account number is required");
+  }
+
+  const account = await prisma.account.findUnique({
+    where: {
+      accountNumber: String(accountNumber),
+    },
+
+    select: {
+      ...ACCOUNT_SELECT_FIELDS,
+      userId: true,
+    },
+  });
+
+  if (!account || account.userId !== userId) {
+    throw new Error("Account not found");
+  }
+
+  const deletedAccount =
+    await prisma.account.delete({
+      where: {
+        accountNumber: String(accountNumber),
+      },
+
+      select: ACCOUNT_SELECT_FIELDS,
+    });
+
+  return deletedAccount;
+}
+
+// ======================
 // EXPORTS
 // ======================
 
@@ -162,4 +205,6 @@ module.exports = {
   createAccount,
   getAccountsForUser,
   getAccountByIdForUser,
+  deleteAccountForUser,
 };
+

@@ -1,4 +1,3 @@
-
 import { motion } from "framer-motion";
 import {
   Wifi,
@@ -86,35 +85,57 @@ const BankCard = () => {
           return;
         }
 
-        const data = responseData?.data;
+        const accountsData = responseData?.data;
 
-        /*
-         * Backend may return:
-         *
-         * data: [...]
-         *
-         * OR
-         *
-         * data: {
-         *   ...
-         * }
-         */
+        // ==========================================
+        // NORMALIZE ACCOUNTS RESPONSE
+        // ==========================================
 
-        if (Array.isArray(data)) {
-          setAccount(data.length > 0 ? data[0] : null);
+        let accounts = [];
+
+        if (Array.isArray(accountsData)) {
+          accounts = accountsData;
+        } else if (
+          accountsData &&
+          typeof accountsData === "object"
+        ) {
+          accounts = [accountsData];
+        }
+
+        if (accounts.length === 0) {
+          setAccount(null);
           return;
         }
 
-        if (data && typeof data === "object") {
-          setAccount(data);
-          return;
-        }
+        // ==========================================
+        // SELECT THE ACCOUNT SHOWN ON THE BANK CARD
+        //
+        // The current card displays account ending 0276.
+        // Always prefer that exact account instead of
+        // blindly selecting accountsData[0].
+        // ==========================================
 
-        setAccount(null);
+        const targetAccount = accounts.find((item) => {
+          const number =
+            item?.accountNumber ||
+            item?.accountNo ||
+            "";
+
+          const cleanNumber = String(number).replace(/\s/g, "");
+
+          return cleanNumber.endsWith("0276");
+        });
+
+        const selectedAccount =
+          targetAccount || accounts[0];
+
+        setAccount(selectedAccount);
       } catch (error) {
         console.error(
           "BANK CARD ACCOUNT ERROR:",
-          error?.response?.data || error?.message || error
+          error?.response?.data ||
+            error?.message ||
+            error
         );
 
         if (mounted) {
@@ -129,7 +150,6 @@ const BankCard = () => {
 
     fetchAccount();
 
-    // Refresh account data whenever dashboard data changes.
     const handleDashboardUpdate = () => {
       fetchAccount();
     };
@@ -177,20 +197,36 @@ const BankCard = () => {
     account?.currency ||
     "INR";
 
+  // ==========================================
+  // BALANCE
+  // ==========================================
+
   const rawBalance =
     account?.balance ??
     account?.availableBalance ??
     account?.currentBalance ??
     0;
 
-  const balance = Number(rawBalance) || 0;
+  const balanceString =
+    String(rawBalance)
+      .replace(/,/g, "")
+      .trim();
+
+  const parsedBalance =
+    Number.parseFloat(balanceString);
+
+  const balance =
+    Number.isFinite(parsedBalance)
+      ? parsedBalance
+      : 0;
 
   const accountStatus =
     account?.status ||
     "ACTIVE";
 
   const isActive =
-    String(accountStatus).toUpperCase() === "ACTIVE";
+    String(accountStatus).toUpperCase() ===
+    "ACTIVE";
 
   // ==========================================
   // CURRENCY FORMATTER
@@ -208,15 +244,16 @@ const BankCard = () => {
           ? "£"
           : "₹";
 
-  const formattedBalance = balance.toLocaleString(
-    normalizedCurrency === "INR"
-      ? "en-IN"
-      : "en-US",
-    {
-      minimumFractionDigits: 0,
-      maximumFractionDigits: 2,
-    }
-  );
+  const formattedBalance =
+    balance.toLocaleString(
+      normalizedCurrency === "INR"
+        ? "en-IN"
+        : "en-US",
+      {
+        minimumFractionDigits: 0,
+        maximumFractionDigits: 2,
+      }
+    );
 
   // ==========================================
   // ACCOUNT NUMBER FORMATTER
@@ -295,9 +332,7 @@ const BankCard = () => {
         sm:p-7
       "
     >
-      {/* ==========================================
-          AMBIENT GLOW
-      ========================================== */}
+      {/* AMBIENT GLOW */}
 
       <div
         className="
@@ -330,9 +365,7 @@ const BankCard = () => {
         "
       />
 
-      {/* ==========================================
-          GLASS OVERLAY
-      ========================================== */}
+      {/* GLASS OVERLAY */}
 
       <div
         className="
@@ -361,15 +394,11 @@ const BankCard = () => {
         "
       />
 
-      {/* ==========================================
-          CARD CONTENT
-      ========================================== */}
+      {/* CARD CONTENT */}
 
       <div className="relative z-10 flex min-h-[298px] flex-col justify-between">
 
-        {/* ========================================
-            TOP SECTION
-        ======================================== */}
+        {/* TOP SECTION */}
 
         <div>
 
@@ -633,13 +662,11 @@ const BankCard = () => {
           </div>
         </div>
 
-        {/* ========================================
-            BOTTOM SECTION
-        ======================================== */}
+        {/* BOTTOM SECTION */}
 
         <div className="mt-5">
 
-          {/* BALANCE */}
+          {/* AVAILABLE BALANCE */}
 
           <div className="flex items-end justify-between gap-4">
 
@@ -861,9 +888,7 @@ const BankCard = () => {
         </div>
       </div>
 
-      {/* ==========================================
-          AI SIGNATURE
-      ========================================== */}
+      {/* AI SIGNATURE */}
 
       <div
         className="
@@ -886,9 +911,7 @@ const BankCard = () => {
         SmartBank AI
       </div>
 
-      {/* ==========================================
-          CARD EDGE
-      ========================================== */}
+      {/* CARD EDGE */}
 
       <div
         className="
@@ -908,4 +931,3 @@ const BankCard = () => {
 };
 
 export default BankCard;
-
