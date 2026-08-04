@@ -1,7 +1,9 @@
+
 import { motion } from "framer-motion";
 import {
   Send,
   PlusCircle,
+  ArrowDownCircle,
   Receipt,
   CreditCard,
   ArrowUpRight,
@@ -33,6 +35,17 @@ const QuickActions = ({ openModal }) => {
       glow: "bg-emerald-400/10",
       border: "hover:border-emerald-400/30",
       badge: "Instant",
+    },
+    {
+      title: "Withdraw Money",
+      icon: ArrowDownCircle,
+      description: "Withdraw funds securely from your account.",
+      accent:
+        "from-red-500/25 via-red-500/10 to-orange-400/10",
+      iconColor: "text-red-300",
+      glow: "bg-red-400/10",
+      border: "hover:border-red-400/30",
+      badge: "Secure",
     },
     {
       title: "Pay Bills",
@@ -153,7 +166,7 @@ const QuickActions = ({ openModal }) => {
 
       {/* Action Grid */}
 
-      <div className="relative z-10 mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-4">
+      <div className="relative z-10 mt-7 grid gap-4 sm:grid-cols-2 xl:grid-cols-5">
         {actions.map((item, index) => {
           const Icon = item.icon;
 
@@ -281,3 +294,4 @@ const QuickActions = ({ openModal }) => {
 };
 
 export default QuickActions;
+

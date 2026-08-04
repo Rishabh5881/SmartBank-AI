@@ -3,6 +3,7 @@ const transactionService = require("../services/transaction.service");
 // =====================
 // DEPOSIT
 // =====================
+
 async function depositController(req, res, next) {
   try {
     const result = await transactionService.deposit(
@@ -23,6 +24,7 @@ async function depositController(req, res, next) {
 // =====================
 // WITHDRAW
 // =====================
+
 async function withdrawController(req, res, next) {
   try {
     const result = await transactionService.withdraw(
@@ -43,6 +45,7 @@ async function withdrawController(req, res, next) {
 // =====================
 // TRANSFER
 // =====================
+
 async function transferController(req, res, next) {
   try {
     const result = await transactionService.transfer(
@@ -62,22 +65,37 @@ async function transferController(req, res, next) {
 
 // =====================
 // TRANSACTION HISTORY
+// PAGINATION / LIMIT
 // =====================
+
 async function getTransactionsController(req, res, next) {
   try {
-    const result = await transactionService.getTransactions(
-      req.user.id
-    );
+    const {
+      page = 1,
+      limit = 10,
+    } = req.query;
+
+    const result =
+      await transactionService.getTransactions(
+        req.user.id,
+        page,
+        limit
+      );
 
     res.status(200).json({
       success: true,
-      message: "Transactions fetched successfully",
+      message:
+        "Transactions fetched successfully",
       data: result,
     });
   } catch (err) {
     next(err);
   }
 }
+
+// =====================
+// EXPORTS
+// =====================
 
 module.exports = {
   depositController,

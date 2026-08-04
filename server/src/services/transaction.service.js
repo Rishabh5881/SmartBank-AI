@@ -1,18 +1,13 @@
+
 const prisma = require("../config/prisma");
 const ApiError = require("../utils/ApiError");
-
 
 // =====================
 // VALIDATE AMOUNT
 // =====================
 
 function assertValidAmount(amount) {
-
-
-  const numericAmount =
-    Number(amount);
-
-
+  const numericAmount = Number(amount);
 
   if (
     amount === undefined ||
@@ -20,572 +15,403 @@ function assertValidAmount(amount) {
     Number.isNaN(numericAmount) ||
     numericAmount <= 0
   ) {
-
     throw ApiError.badRequest(
       "Amount must be a positive number"
     );
-
   }
 
-
-
   return numericAmount;
-
 }
-
-
-
-
-
 
 // =====================
 // DEPOSIT
 // =====================
 
 async function deposit(userId, data) {
-
-
-  if(!userId){
-
+  if (!userId) {
     throw ApiError.badRequest(
       "User ID is required"
     );
-
   }
 
-
-
-  if(!data){
-
+  if (!data) {
     throw ApiError.badRequest(
       "Deposit data missing"
     );
-
   }
-
-
 
   const {
     accountId,
-    amount
+    amount,
   } = data;
-
-
 
   const validAmount =
     assertValidAmount(amount);
 
-
-
-
   const account =
     await prisma.account.findFirst({
-
-      where:{
+      where: {
         id: accountId,
-        userId
-      }
-
+        userId,
+      },
     });
 
-
-
-
-  if(!account){
-
+  if (!account) {
     throw ApiError.notFound(
       "Account not found"
     );
-
   }
 
-
-
-
   return await prisma.$transaction(
-    async(tx)=>{
-
-
+    async (tx) => {
       const updatedAccount =
-      await tx.account.update({
-
-        where:{
-          id:accountId
-        },
-
-        data:{
-          balance:{
-            increment:validAmount
-          }
-        }
-
-      });
-
-
-
+        await tx.account.update({
+          where: {
+            id: accountId,
+          },
+          data: {
+            balance: {
+              increment: validAmount,
+            },
+          },
+        });
 
       await tx.transaction.create({
-
-        data:{
-
-          amount:validAmount,
-
-          type:"DEPOSIT",
-
-          status:"COMPLETED",
-
-          description:"Money deposited",
-
+        data: {
+          amount: validAmount,
+          type: "DEPOSIT",
+          status: "COMPLETED",
+          description: "Money deposited",
           balanceAfter:
             updatedAccount.balance,
-
           sourceAccountId:
             accountId,
-
           destinationAccountId:
-            accountId
-
-        }
-
+            accountId,
+        },
       });
 
-
-
       return updatedAccount;
-
-
     }
   );
-
 }
-
-
-
-
-
-
 
 // =====================
 // WITHDRAW
 // =====================
 
-async function withdraw(userId,data){
+async function withdraw(userId, data) {
+  if (!userId) {
+    throw ApiError.badRequest(
+      "User ID is required"
+    );
+  }
 
-
-  if(!data){
-
+  if (!data) {
     throw ApiError.badRequest(
       "Withdrawal data missing"
     );
-
   }
-
-
 
   const {
     accountId,
-    amount
+    amount,
   } = data;
-
-
-
 
   const validAmount =
     assertValidAmount(amount);
 
-
-
-
   const account =
     await prisma.account.findFirst({
-
-      where:{
-        id:accountId,
-        userId
-      }
-
+      where: {
+        id: accountId,
+        userId,
+      },
     });
 
-
-
-
-  if(!account){
-
+  if (!account) {
     throw ApiError.notFound(
       "Account not found"
     );
-
   }
 
-
-
-
-
-  if(Number(account.balance) < validAmount){
-
+  if (
+    Number(account.balance) <
+    validAmount
+  ) {
     throw ApiError.badRequest(
       "Insufficient balance"
     );
-
   }
 
-
-
-
-
   return await prisma.$transaction(
-    async(tx)=>{
-
-
+    async (tx) => {
       const updatedAccount =
-      await tx.account.update({
-
-        where:{
-          id:accountId
-        },
-
-        data:{
-          balance:{
-            decrement:validAmount
-          }
-        }
-
-      });
-
-
-
+        await tx.account.update({
+          where: {
+            id: accountId,
+          },
+          data: {
+            balance: {
+              decrement: validAmount,
+            },
+          },
+        });
 
       await tx.transaction.create({
-
-        data:{
-
-          amount:validAmount,
-
-          type:"WITHDRAWAL",
-
-          status:"COMPLETED",
-
-          description:"Money withdrawn",
-
+        data: {
+          amount: validAmount,
+          type: "WITHDRAWAL",
+          status: "COMPLETED",
+          description: "Money withdrawn",
           balanceAfter:
             updatedAccount.balance,
-
           sourceAccountId:
-            accountId
-
-        }
-
+            accountId,
+        },
       });
 
-
-
       return updatedAccount;
-
-
     }
   );
-
 }
-
-
-
-
-
-
 
 // =====================
 // TRANSFER
 // =====================
 
-async function transfer(userId,data){
+async function transfer(userId, data) {
+  if (!userId) {
+    throw ApiError.badRequest(
+      "User ID is required"
+    );
+  }
 
-
-  if(!data){
-
+  if (!data) {
     throw ApiError.badRequest(
       "Transfer data missing"
     );
-
   }
-
-
 
   const {
     fromAccountId,
     toAccountId,
-    amount
+    amount,
   } = data;
-
-
-
 
   const validAmount =
     assertValidAmount(amount);
 
-
-
-
-  if(fromAccountId === toAccountId){
-
+  if (
+    fromAccountId === toAccountId
+  ) {
     throw ApiError.badRequest(
       "Cannot transfer to the same account"
     );
-
   }
-
-
-
-
 
   const sender =
     await prisma.account.findFirst({
-
-      where:{
-        id:fromAccountId,
-        userId
-      }
-
+      where: {
+        id: fromAccountId,
+        userId,
+      },
     });
 
-
-
-
-
-  if(!sender){
-
+  if (!sender) {
     throw ApiError.notFound(
       "Sender account not found"
     );
-
   }
 
-
-
-
-
-  if(Number(sender.balance) < validAmount){
-
+  if (
+    Number(sender.balance) <
+    validAmount
+  ) {
     throw ApiError.badRequest(
       "Insufficient balance"
     );
-
   }
-
-
-
-
 
   const receiver =
     await prisma.account.findUnique({
-
-      where:{
-        id:toAccountId
-      }
-
+      where: {
+        id: toAccountId,
+      },
     });
 
-
-
-
-
-  if(!receiver){
-
+  if (!receiver) {
     throw ApiError.notFound(
       "Receiver account not found"
     );
-
   }
 
-
-
-
-
   return await prisma.$transaction(
-    async(tx)=>{
-
-
+    async (tx) => {
       const updatedSender =
-      await tx.account.update({
-
-        where:{
-          id:fromAccountId
-        },
-
-        data:{
-          balance:{
-            decrement:validAmount
-          }
-        }
-
-      });
-
-
-
+        await tx.account.update({
+          where: {
+            id: fromAccountId,
+          },
+          data: {
+            balance: {
+              decrement: validAmount,
+            },
+          },
+        });
 
       const updatedReceiver =
-      await tx.account.update({
-
-        where:{
-          id:toAccountId
-        },
-
-        data:{
-          balance:{
-            increment:validAmount
-          }
-        }
-
-      });
-
-
-
-
+        await tx.account.update({
+          where: {
+            id: toAccountId,
+          },
+          data: {
+            balance: {
+              increment: validAmount,
+            },
+          },
+        });
 
       await tx.transaction.create({
-
-        data:{
-
-          amount:validAmount,
-
-          type:"TRANSFER",
-
-          status:"COMPLETED",
-
-          description:"Money transferred",
-
+        data: {
+          amount: validAmount,
+          type: "TRANSFER",
+          status: "COMPLETED",
+          description: "Money transferred",
           balanceAfter:
             updatedSender.balance,
-
           sourceAccountId:
             fromAccountId,
-
           destinationAccountId:
-            toAccountId
-
-        }
-
+            toAccountId,
+        },
       });
 
-
-
-
       return {
-
-        sender:updatedSender,
-
-        receiver:updatedReceiver
-
+        sender: updatedSender,
+        receiver: updatedReceiver,
       };
-
-
     }
   );
-
 }
-
-
-
-
-
-
 
 // =====================
 // GET TRANSACTIONS
+// PAGINATION / LIMIT
 // =====================
 
-async function getTransactions(userId){
-
-
-  if(!userId){
-
+async function getTransactions(
+  userId,
+  page = 1,
+  limit = 10
+) {
+  if (!userId) {
     throw ApiError.badRequest(
       "User ID is required"
     );
-
   }
 
+  const parsedPage =
+    Number.parseInt(page, 10);
 
+  const parsedLimit =
+    Number.parseInt(limit, 10);
 
+  const currentPage =
+    Number.isInteger(parsedPage) &&
+    parsedPage > 0
+      ? parsedPage
+      : 1;
 
-  return await prisma.transaction.findMany({
+  const pageSize =
+    Number.isInteger(parsedLimit) &&
+    parsedLimit > 0
+      ? Math.min(parsedLimit, 50)
+      : 10;
 
-    where:{
+  const skip =
+    (currentPage - 1) * pageSize;
 
+  const where = {
+    OR: [
+      {
+        sourceAccount: {
+          userId,
+        },
+      },
+      {
+        destinationAccount: {
+          userId,
+        },
+      },
+    ],
+  };
 
-      OR:[
+  const [
+    transactions,
+    total,
+  ] = await Promise.all([
+    prisma.transaction.findMany({
+      where,
 
-        {
-
-          sourceAccount:{
-            userId
-          }
-
+      include: {
+        sourceAccount: {
+          select: {
+            accountNumber: true,
+          },
         },
 
-        {
-
-          destinationAccount:{
-            userId
-          }
-
-        }
-
-      ]
-
-    },
-
-
-
-    include:{
-
-
-      sourceAccount:{
-
-        select:{
-          accountNumber:true
-        }
-
+        destinationAccount: {
+          select: {
+            accountNumber: true,
+          },
+        },
       },
 
+      orderBy: {
+        createdAt: "desc",
+      },
 
-      destinationAccount:{
+      skip,
+      take: pageSize,
+    }),
 
-        select:{
-          accountNumber:true
-        }
+    prisma.transaction.count({
+      where,
+    }),
+  ]);
 
-      }
+  const totalPages =
+    total === 0
+      ? 0
+      : Math.ceil(
+          total / pageSize
+        );
 
+  return {
+    transactions,
 
+    pagination: {
+      page: currentPage,
+      limit: pageSize,
+      total,
+      totalPages,
+      hasNextPage:
+        currentPage < totalPages,
+      hasPreviousPage:
+        currentPage > 1,
     },
-
-
-
-    orderBy:{
-
-      createdAt:"desc"
-
-    }
-
-  });
-
-
+  };
 }
 
-
-
-
-
-
+// =====================
+// EXPORTS
+// =====================
 
 module.exports = {
-
   deposit,
-
   withdraw,
-
   transfer,
-
-  getTransactions
-
+  getTransactions,
 };
+

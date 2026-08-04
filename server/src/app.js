@@ -29,27 +29,10 @@ const errorMiddleware = require("./middlewares/error.middleware");
 const app = express();
 
 // =====================
-// SECURITY MIDDLEWARES
+// SECURITY MIDDLEWARE
 // =====================
 
 app.use(helmet());
-
-const apiLimiter = rateLimit({
-  windowMs: 15 * 60 * 1000,
-  max: 200,
-  message: {
-    success: false,
-    message: "Too many requests, please try again later",
-  },
-});
-
-app.use("/api", apiLimiter);
-
-// =====================
-// LOGGER
-// =====================
-
-app.use(morgan("dev"));
 
 // =====================
 // CORS CONFIG
@@ -62,6 +45,8 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
+      // Allow requests without an Origin header
+      // such as Postman/server-to-server requests.
       if (!origin) {
         return callback(null, true);
       }
@@ -80,6 +65,35 @@ app.use(
 );
 
 // =====================
+// RATE LIMITER
+// =====================
+
+const apiLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+
+  // Development-friendly limit.
+  // This prevents the dashboard's multiple API
+  // requests from immediately hitting the limiter.
+  max: 500,
+
+  standardHeaders: true,
+  legacyHeaders: false,
+
+  message: {
+    success: false,
+    message: "Too many requests, please try again later",
+  },
+});
+
+app.use("/api", apiLimiter);
+
+// =====================
+// LOGGER
+// =====================
+
+app.use(morgan("dev"));
+
+// =====================
 // BODY PARSER
 // =====================
 
@@ -90,6 +104,10 @@ app.use(
     extended: true,
   })
 );
+
+// =====================
+// COOKIE PARSER
+// =====================
 
 app.use(cookieParser());
 
@@ -171,7 +189,7 @@ app.use(
 );
 
 // =====================
-// 404
+// 404 HANDLER
 // =====================
 
 app.use((req, res) => {
@@ -192,3 +210,4 @@ app.use(errorMiddleware);
 // =====================
 
 module.exports = app;
+
