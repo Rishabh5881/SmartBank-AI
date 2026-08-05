@@ -5,6 +5,7 @@ import Home from "../pages/Home";
 import Login from "../pages/Login";
 import Signup from "../pages/Signup";
 import Dashboard from "../pages/Dashboard";
+import Loans from "../pages/Loans";
 
 const AppRoutes = () => {
   return (
@@ -12,6 +13,7 @@ const AppRoutes = () => {
       {/* =========================
           PUBLIC ROUTES
       ========================== */}
+
       <Route path="/" element={<Home />} />
 
       <Route path="/login" element={<Login />} />
@@ -21,15 +23,18 @@ const AppRoutes = () => {
       {/* =========================
           AUTHENTICATED ROUTES
       ========================== */}
+
       <Route path="/dashboard" element={<Dashboard />} />
+
+      <Route path="/loans" element={<Loans />} />
 
       {/* =========================
           FALLBACK ROUTE
       ========================== */}
+
       <Route path="*" element={<Navigate to="/" replace />} />
     </Routes>
   );
 };
 
 export default AppRoutes;
-
