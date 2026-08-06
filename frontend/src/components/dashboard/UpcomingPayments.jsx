@@ -1,3 +1,4 @@
+
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
@@ -17,6 +18,10 @@ import {
 
 import api from "../../services/api";
 
+// ==========================================
+// LOAN ICON
+// ==========================================
+
 const getLoanIcon = (loanType) => {
   const type = String(loanType || "").toLowerCase();
 
@@ -34,6 +39,10 @@ const getLoanIcon = (loanType) => {
 
   return Landmark;
 };
+
+// ==========================================
+// LOAN VISUALS
+// ==========================================
 
 const getLoanVisuals = (loanType) => {
   const type = String(loanType || "").toLowerCase();
@@ -65,10 +74,14 @@ const getLoanVisuals = (loanType) => {
   };
 };
 
+// ==========================================
+// PAYMENT STATUS
+// ==========================================
+
 const getPaymentStatus = (nextPaymentDate) => {
   if (!nextPaymentDate) {
     return {
-      label: "No Due Date",
+      label: "Not Scheduled",
       className:
         "border-slate-400/15 bg-slate-400/10 text-slate-400",
     };
@@ -78,7 +91,7 @@ const getPaymentStatus = (nextPaymentDate) => {
 
   if (Number.isNaN(paymentDate.getTime())) {
     return {
-      label: "Date Unavailable",
+      label: "Not Scheduled",
       className:
         "border-slate-400/15 bg-slate-400/10 text-slate-400",
     };
@@ -134,27 +147,36 @@ const getPaymentStatus = (nextPaymentDate) => {
   };
 };
 
+// ==========================================
+// CURRENCY
+// ==========================================
+
 const formatCurrency = (value) => {
-  const amount = Number(value || 0);
+  const amount = Number(value);
 
   if (!Number.isFinite(amount)) {
-    return "₹0";
+    return "₹0.00";
   }
 
   return `₹${amount.toLocaleString("en-IN", {
+    minimumFractionDigits: 2,
     maximumFractionDigits: 2,
   })}`;
 };
 
+// ==========================================
+// DATE
+// ==========================================
+
 const formatPaymentDate = (value) => {
   if (!value) {
-    return "Date unavailable";
+    return "Not scheduled";
   }
 
   const date = new Date(value);
 
   if (Number.isNaN(date.getTime())) {
-    return "Date unavailable";
+    return "Not scheduled";
   }
 
   return date.toLocaleDateString("en-IN", {
@@ -164,6 +186,29 @@ const formatPaymentDate = (value) => {
   });
 };
 
+// ==========================================
+// VALUE NORMALIZER
+// ==========================================
+
+const getNumericValue = (...values) => {
+  for (const value of values) {
+    if (
+      value !== null &&
+      value !== undefined &&
+      value !== "" &&
+      Number.isFinite(Number(value))
+    ) {
+      return Number(value);
+    }
+  }
+
+  return 0;
+};
+
+// ==========================================
+// UPCOMING PAYMENTS
+// ==========================================
+
 const UpcomingPayments = () => {
   const navigate = useNavigate();
 
@@ -171,34 +216,201 @@ const UpcomingPayments = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(false);
 
-  const fetchUpcomingPayments = useCallback(async () => {
-    try {
-      setLoading(true);
-      setError(false);
+  // ==========================================
+  // FETCH ACTIVE LOANS
+  // ==========================================
 
+  const fetchUpcomingPayments = useCallback(async () => {
+    setLoading(true);
+    setError(false);
+
+    try {
       const token = localStorage.getItem("token");
 
       if (!token) {
+        console.warn(
+          "UpcomingPayments: authentication token not found."
+        );
+
         setLoans([]);
         return;
       }
 
+      console.log(
+        "UpcomingPayments: fetching /loans/active..."
+      );
+
       const response = await api.get("/loans/active");
 
-      if (response.data?.success) {
-        const data = Array.isArray(response.data?.data)
-          ? response.data.data
-          : [];
+      console.log(
+        "UpcomingPayments: backend response:",
+        response?.data
+      );
 
-        setLoans(data);
-      } else {
+      const responseBody = response?.data;
+
+      if (!responseBody?.success) {
+        console.error(
+          "UpcomingPayments: API returned success=false",
+          responseBody
+        );
+
         setLoans([]);
         setError(true);
+        return;
       }
+
+      /*
+       * Backend may return:
+       *
+       * data: [...]
+       *
+       * or
+       *
+       * data: {
+       *   loans: [...]
+       * }
+       *
+       * Support both safely.
+       */
+
+      let backendLoans = responseBody?.data;
+
+      if (!Array.isArray(backendLoans)) {
+        if (Array.isArray(responseBody?.data?.loans)) {
+          backendLoans = responseBody.data.loans;
+        } else if (Array.isArray(responseBody?.loans)) {
+          backendLoans = responseBody.loans;
+        } else {
+          backendLoans = [];
+        }
+      }
+
+      if (!Array.isArray(backendLoans)) {
+        console.error(
+          "UpcomingPayments: backend data is not an array:",
+          backendLoans
+        );
+
+        setLoans([]);
+        setError(true);
+        return;
+      }
+
+      // ==========================================
+      // NORMALIZE BACKEND LOAN DATA
+      // ==========================================
+
+      const normalizedLoans = backendLoans
+        .map((loan) => {
+          /*
+           * IMPORTANT:
+           *
+           * Current backend loan card is giving data like:
+           *
+           * Home
+           * ACTIVE
+           * Principal $4,001
+           * Remaining $4,810
+           * Monthly EMI $80
+           * Next Payment Not scheduled
+           *
+           * Therefore we support both the expected backend
+           * names and alternate names used by the UI/API.
+           */
+
+          const loanType =
+            loan?.loanType ||
+            loan?.type ||
+            loan?.loan_type ||
+            "PERSONAL";
+
+          const monthlyEmi = getNumericValue(
+            loan?.monthlyEmi,
+            loan?.monthlyEMI,
+            loan?.emi,
+            loan?.monthlyPayment
+          );
+
+          const remainingAmount = getNumericValue(
+            loan?.remainingAmount,
+            loan?.remaining,
+            loan?.remainingBalance,
+            loan?.outstandingAmount,
+            loan?.outstandingBalance,
+            loan?.balance
+          );
+
+          const principalAmount = getNumericValue(
+            loan?.principalAmount,
+            loan?.principal,
+            loan?.loanAmount,
+            loan?.amount
+          );
+
+          const nextPaymentDate =
+            loan?.nextPaymentDate ||
+            loan?.nextDueDate ||
+            loan?.nextPayment ||
+            null;
+
+          const normalized = {
+            id:
+              loan?.id ||
+              loan?._id ||
+              loan?.loanId ||
+              "",
+
+            loanType,
+
+            status: String(
+              loan?.status ||
+                loan?.loanStatus ||
+                "ACTIVE"
+            ).toUpperCase(),
+
+            principalAmount,
+
+            monthlyEmi,
+
+            remainingAmount,
+
+            nextPaymentDate,
+          };
+
+          console.log(
+            "UpcomingPayments: normalized loan:",
+            normalized
+          );
+
+          return normalized;
+        })
+        .filter((loan) => {
+          /*
+           * A valid loan must have an ID.
+           *
+           * We do NOT reject the loan merely because
+           * EMI is missing, because the backend can still
+           * legitimately return a loan with:
+           *
+           * Next Payment: Not scheduled
+           */
+
+          return Boolean(loan.id);
+        });
+
+      console.log(
+        "UpcomingPayments: FINAL LOANS:",
+        normalizedLoans
+      );
+
+      setLoans(normalizedLoans);
     } catch (err) {
       console.error(
-        "UPCOMING PAYMENTS ERROR:",
-        err?.response?.data || err?.message
+        "UpcomingPayments: request failed:",
+        err?.response?.data ||
+          err?.message ||
+          err
       );
 
       setLoans([]);
@@ -208,74 +420,120 @@ const UpcomingPayments = () => {
     }
   }, []);
 
+  // ==========================================
+  // INITIAL LOAD
+  // ==========================================
+
   useEffect(() => {
     fetchUpcomingPayments();
 
-    const handleDashboardUpdate = () => {
+    const handleDashboardUpdated = () => {
       fetchUpcomingPayments();
     };
 
-    const handleLoanUpdate = () => {
+    const handleLoanUpdated = () => {
       fetchUpcomingPayments();
     };
 
     window.addEventListener(
       "dashboardUpdated",
-      handleDashboardUpdate
+      handleDashboardUpdated
     );
 
     window.addEventListener(
       "loanUpdated",
-      handleLoanUpdate
+      handleLoanUpdated
     );
 
     return () => {
       window.removeEventListener(
         "dashboardUpdated",
-        handleDashboardUpdate
+        handleDashboardUpdated
       );
 
       window.removeEventListener(
         "loanUpdated",
-        handleLoanUpdate
+        handleLoanUpdated
       );
     };
   }, [fetchUpcomingPayments]);
 
+  // ==========================================
+  // SORT BY NEXT PAYMENT DATE
+  // ==========================================
+
   const sortedLoans = useMemo(() => {
     return [...loans].sort((a, b) => {
-      if (!a?.nextPaymentDate) {
+      if (!a.nextPaymentDate) {
         return 1;
       }
 
-      if (!b?.nextPaymentDate) {
+      if (!b.nextPaymentDate) {
         return -1;
       }
 
-      return (
-        new Date(a.nextPaymentDate).getTime() -
-        new Date(b.nextPaymentDate).getTime()
-      );
+      const dateA = new Date(
+        a.nextPaymentDate
+      ).getTime();
+
+      const dateB = new Date(
+        b.nextPaymentDate
+      ).getTime();
+
+      if (!Number.isFinite(dateA)) {
+        return 1;
+      }
+
+      if (!Number.isFinite(dateB)) {
+        return -1;
+      }
+
+      return dateA - dateB;
     });
   }, [loans]);
 
+  // ==========================================
+  // TOTAL UPCOMING EMI
+  // ==========================================
+
   const totalUpcoming = useMemo(() => {
-    return sortedLoans.reduce((total, loan) => {
-      return total + Number(loan?.monthlyEmi || 0);
-    }, 0);
+    return sortedLoans.reduce(
+      (total, loan) => {
+        const emi = Number(loan?.monthlyEmi);
+
+        if (!Number.isFinite(emi) || emi <= 0) {
+          return total;
+        }
+
+        return total + emi;
+      },
+      0
+    );
   }, [sortedLoans]);
+
+  // ==========================================
+  // NEXT DUE DATE
+  // ==========================================
 
   const nextDueDate = useMemo(() => {
-    const firstLoan = sortedLoans.find(
-      (loan) => loan?.nextPaymentDate
+    const loan = sortedLoans.find(
+      (item) => item?.nextPaymentDate
     );
 
-    return firstLoan?.nextPaymentDate || null;
+    return loan?.nextPaymentDate || null;
   }, [sortedLoans]);
+
+  // ==========================================
+  // VIEW ALL
+  // ==========================================
 
   const handleViewAllPayments = () => {
     navigate("/loans");
   };
+
+  // ==========================================
+  // UI
+  // ==========================================
 
   return (
     <motion.div
@@ -311,6 +569,8 @@ const UpcomingPayments = () => {
         sm:p-6
       "
     >
+      {/* DECORATION */}
+
       <div
         className="
           pointer-events-none
@@ -356,13 +616,11 @@ const UpcomingPayments = () => {
         "
       />
 
+      {/* HEADER */}
+
       <div className="relative flex items-start justify-between gap-4">
         <div className="flex min-w-0 items-center gap-3">
-          <motion.div
-            whileHover={{
-              scale: 1.06,
-              rotate: 3,
-            }}
+          <div
             className="
               flex
               h-12
@@ -376,8 +634,6 @@ const UpcomingPayments = () => {
               bg-gradient-to-br
               from-cyan-400/15
               to-blue-500/10
-              shadow-lg
-              shadow-cyan-500/5
             "
           >
             <CalendarClock
@@ -385,7 +641,7 @@ const UpcomingPayments = () => {
               strokeWidth={1.8}
               className="text-cyan-400"
             />
-          </motion.div>
+          </div>
 
           <div className="min-w-0">
             <div className="flex items-center gap-2">
@@ -403,7 +659,6 @@ const UpcomingPayments = () => {
                   tracking-[0.18em]
                   text-cyan-400
                   sm:text-[10px]
-                  sm:tracking-[0.2em]
                 "
               >
                 Payment Schedule
@@ -447,8 +702,6 @@ const UpcomingPayments = () => {
               w-1.5
               rounded-full
               bg-cyan-400
-              shadow-lg
-              shadow-cyan-400/60
             "
           />
 
@@ -461,14 +714,22 @@ const UpcomingPayments = () => {
               text-slate-500
             "
           >
-            {loading ? "Loading" : `${loans.length} Payments`}
+            {loading
+              ? "Loading"
+              : `${loans.length} ${
+                  loans.length === 1
+                    ? "Payment"
+                    : "Payments"
+                }`}
           </span>
         </div>
       </div>
 
+      {/* LOADING */}
+
       {loading && (
         <div className="relative mt-7 space-y-3">
-          {[1, 2, 3].map((item) => (
+          {[1, 2].map((item) => (
             <div
               key={item}
               className="
@@ -501,6 +762,8 @@ const UpcomingPayments = () => {
           ))}
         </div>
       )}
+
+      {/* ERROR */}
 
       {!loading && error && (
         <div
@@ -572,475 +835,514 @@ const UpcomingPayments = () => {
         </div>
       )}
 
-      {!loading && !error && sortedLoans.length === 0 && (
-        <div
-          className="
-            relative
-            mt-7
-            flex
-            min-h-48
-            flex-col
-            items-center
-            justify-center
-            rounded-2xl
-            border
-            border-white/[0.06]
-            bg-white/[0.02]
-            p-7
-            text-center
-          "
-        >
+      {/* EMPTY */}
+
+      {!loading &&
+        !error &&
+        sortedLoans.length === 0 && (
           <div
             className="
+              relative
+              mt-7
               flex
-              h-14
-              w-14
+              min-h-48
+              flex-col
               items-center
               justify-center
               rounded-2xl
               border
-              border-cyan-400/10
-              bg-cyan-400/[0.05]
-            "
-          >
-            <WalletCards
-              size={24}
-              className="text-cyan-400/70"
-            />
-          </div>
-
-          <p className="mt-4 text-sm font-semibold text-slate-300">
-            No upcoming payments
-          </p>
-
-          <p className="mt-1 max-w-xs text-xs leading-5 text-slate-600">
-            Your active loan EMI payments will appear here
-            automatically.
-          </p>
-
-          <button
-            type="button"
-            onClick={handleViewAllPayments}
-            className="
-              mt-5
-              inline-flex
-              items-center
-              gap-2
-              rounded-xl
-              border
-              border-cyan-400/15
-              bg-cyan-400/[0.05]
-              px-4
-              py-2.5
-              text-xs
-              font-semibold
-              text-cyan-400
-              transition-all
-              hover:border-cyan-400/30
-              hover:bg-cyan-400/10
-            "
-          >
-            Go to Loans
-            <ChevronRight size={14} />
-          </button>
-        </div>
-      )}
-
-      {!loading && !error && sortedLoans.length > 0 && (
-        <div className="relative mt-7 space-y-3">
-          {sortedLoans.slice(0, 3).map((loan, index) => {
-            const Icon = getLoanIcon(loan?.loanType);
-
-            const visuals = getLoanVisuals(
-              loan?.loanType
-            );
-
-            const paymentStatus = getPaymentStatus(
-              loan?.nextPaymentDate
-            );
-
-            return (
-              <motion.div
-                key={loan?.id || index}
-                initial={{
-                  opacity: 0,
-                  x: -15,
-                }}
-                animate={{
-                  opacity: 1,
-                  x: 0,
-                }}
-                transition={{
-                  duration: 0.4,
-                  delay: 0.15 + index * 0.08,
-                }}
-                whileHover={{
-                  y: -3,
-                }}
-                className="
-                  group/payment
-                  relative
-                  overflow-hidden
-                  rounded-2xl
-                  border
-                  border-white/[0.07]
-                  bg-white/[0.035]
-                  p-4
-                  transition-all
-                  duration-300
-                  hover:border-white/[0.14]
-                  hover:bg-white/[0.06]
-                "
-              >
-                <div
-                  className="
-                    pointer-events-none
-                    absolute
-                    inset-0
-                    bg-gradient-to-r
-                    from-white/[0.05]
-                    via-transparent
-                    to-transparent
-                    opacity-0
-                    transition-opacity
-                    duration-300
-                    group-hover/payment:opacity-100
-                  "
-                />
-
-                <div
-                  className="
-                    relative
-                    flex
-                    items-center
-                    justify-between
-                    gap-3
-                    sm:gap-4
-                  "
-                >
-                  <div className="flex min-w-0 items-center gap-3 sm:gap-4">
-                    <motion.div
-                      whileHover={{
-                        scale: 1.08,
-                      }}
-                      className={`
-                        flex
-                        h-11
-                        w-11
-                        shrink-0
-                        items-center
-                        justify-center
-                        rounded-2xl
-                        border
-                        ${visuals.border}
-                        ${visuals.iconBg}
-                        ${visuals.color}
-                        transition-transform
-                        duration-300
-                        sm:h-12
-                        sm:w-12
-                      `}
-                    >
-                      <Icon
-                        size={20}
-                        strokeWidth={1.8}
-                      />
-                    </motion.div>
-
-                    <div className="min-w-0">
-                      <h3
-                        className="
-                          truncate
-                          text-[13px]
-                          font-bold
-                          text-white
-                          sm:text-sm
-                        "
-                      >
-                        {loan?.loanType || "Loan EMI"}
-                      </h3>
-
-                      <div className="mt-1.5 flex items-center gap-2">
-                        <span
-                          className="
-                            h-1
-                            w-1
-                            shrink-0
-                            rounded-full
-                            bg-slate-600
-                          "
-                        />
-
-                        <p className="truncate text-[11px] text-slate-500 sm:text-xs">
-                          {loan?.nextPaymentDate
-                            ? `Due ${formatPaymentDate(
-                                loan.nextPaymentDate
-                              )}`
-                            : "Due date unavailable"}
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="shrink-0 text-right">
-                    <h3
-                      className="
-                        text-base
-                        font-bold
-                        tracking-tight
-                        text-white
-                        sm:text-lg
-                      "
-                    >
-                      {formatCurrency(
-                        loan?.monthlyEmi
-                      )}
-                    </h3>
-
-                    <span
-                      className={`
-                        mt-1.5
-                        inline-flex
-                        max-w-full
-                        items-center
-                        rounded-full
-                        border
-                        px-2
-                        py-1
-                        text-[8px]
-                        font-bold
-                        uppercase
-                        tracking-wider
-                        sm:px-2.5
-                        sm:text-[9px]
-                        ${paymentStatus.className}
-                      `}
-                    >
-                      {paymentStatus.label}
-                    </span>
-                  </div>
-                </div>
-
-                <div
-                  className="
-                    relative
-                    mt-4
-                    flex
-                    items-center
-                    justify-between
-                    border-t
-                    border-white/[0.05]
-                    pt-3
-                  "
-                >
-                  <span className="text-[9px] font-medium uppercase tracking-[0.12em] text-slate-600">
-                    Remaining
-                  </span>
-
-                  <span className="text-[11px] font-semibold text-slate-400">
-                    {formatCurrency(
-                      loan?.remainingAmount
-                    )}
-                  </span>
-                </div>
-
-                <div
-                  className="
-                    pointer-events-none
-                    absolute
-                    bottom-0
-                    left-1/2
-                    h-px
-                    w-0
-                    -translate-x-1/2
-                    bg-gradient-to-r
-                    from-transparent
-                    via-cyan-400/60
-                    to-transparent
-                    transition-all
-                    duration-500
-                    group-hover/payment:w-[70%]
-                  "
-                />
-              </motion.div>
-            );
-          })}
-        </div>
-      )}
-
-      {!loading && !error && sortedLoans.length > 0 && (
-        <div
-          className="
-            relative
-            mt-5
-            grid
-            grid-cols-2
-            gap-3
-          "
-        >
-          <div
-            className="
-              rounded-2xl
-              border
               border-white/[0.06]
-              bg-white/[0.025]
-              px-4
-              py-3.5
-              transition-all
-              duration-300
-              hover:border-white/[0.1]
-              hover:bg-white/[0.04]
+              bg-white/[0.02]
+              p-7
+              text-center
             "
           >
-            <p
+            <div
               className="
-                text-[8px]
-                font-semibold
-                uppercase
-                tracking-[0.15em]
-                text-slate-600
-                sm:text-[9px]
+                flex
+                h-14
+                w-14
+                items-center
+                justify-center
+                rounded-2xl
+                border
+                border-cyan-400/10
+                bg-cyan-400/[0.05]
               "
             >
-              Total Upcoming EMI
+              <WalletCards
+                size={24}
+                className="text-cyan-400/70"
+              />
+            </div>
+
+            <p className="mt-4 text-sm font-semibold text-slate-300">
+              No upcoming payments
             </p>
 
-            <p
-              className="
-                mt-1
-                text-base
-                font-bold
-                text-slate-200
-                sm:text-lg
-              "
-            >
-              {formatCurrency(totalUpcoming)}
-            </p>
-          </div>
-
-          <div
-            className="
-              rounded-2xl
-              border
-              border-cyan-400/10
-              bg-cyan-400/[0.035]
-              px-4
-              py-3.5
-              text-right
-              transition-all
-              duration-300
-              hover:border-cyan-400/20
-              hover:bg-cyan-400/[0.05]
-            "
-          >
-            <p
-              className="
-                text-[8px]
-                font-semibold
-                uppercase
-                tracking-[0.15em]
-                text-slate-600
-                sm:text-[9px]
-              "
-            >
-              Next Due
+            <p className="mt-1 max-w-xs text-xs leading-5 text-slate-600">
+              Your active loan EMI payments will appear here
+              automatically.
             </p>
 
-            <p
+            <button
+              type="button"
+              onClick={handleViewAllPayments}
               className="
-                mt-1
-                text-base
+                mt-5
+                inline-flex
+                items-center
+                gap-2
+                rounded-xl
+                border
+                border-cyan-400/15
+                bg-cyan-400/[0.05]
+                px-4
+                py-2.5
+                text-xs
                 font-semibold
                 text-cyan-400
-                sm:text-lg
+                transition-all
+                hover:border-cyan-400/30
+                hover:bg-cyan-400/10
               "
             >
-              {nextDueDate
-                ? formatPaymentDate(nextDueDate)
-                : "—"}
-            </p>
+              Go to Loans
+              <ChevronRight size={14} />
+            </button>
           </div>
-        </div>
-      )}
+        )}
 
-      {!loading && !error && sortedLoans.length > 0 && (
-        <motion.button
-          type="button"
-          onClick={handleViewAllPayments}
-          whileHover={{
-            y: -2,
-          }}
-          whileTap={{
-            scale: 0.985,
-          }}
-          className="
-            group/button
-            relative
-            mt-5
-            flex
-            w-full
-            items-center
-            justify-center
-            gap-2
-            overflow-hidden
-            rounded-xl
-            border
-            border-blue-500/20
-            bg-gradient-to-r
-            from-blue-600
-            to-cyan-500
-            py-3
-            text-sm
-            font-bold
-            text-white
-            shadow-lg
-            shadow-blue-500/10
-            transition-all
-            duration-300
-            hover:border-cyan-300/30
-            hover:shadow-xl
-            hover:shadow-blue-500/20
-            active:scale-[0.99]
-          "
-        >
-          <span
-            className="
-              relative
-              z-10
-              flex
-              items-center
-              gap-2
-            "
-          >
-            View All Payments
+      {/* PAYMENTS */}
 
-            <ArrowRight
-              size={17}
-              className="
-                transition-transform
-                duration-300
-                group-hover/button:translate-x-1
-              "
-            />
-          </span>
+      {!loading &&
+        !error &&
+        sortedLoans.length > 0 && (
+          <div className="relative mt-7 space-y-3">
+            {sortedLoans
+              .slice(0, 3)
+              .map((loan, index) => {
+                const Icon = getLoanIcon(
+                  loan.loanType
+                );
 
+                const visuals = getLoanVisuals(
+                  loan.loanType
+                );
+
+                const paymentStatus =
+                  getPaymentStatus(
+                    loan.nextPaymentDate
+                  );
+
+                return (
+                  <motion.div
+                    key={loan.id || index}
+                    initial={{
+                      opacity: 0,
+                      x: -15,
+                    }}
+                    animate={{
+                      opacity: 1,
+                      x: 0,
+                    }}
+                    transition={{
+                      duration: 0.4,
+                      delay: 0.15 + index * 0.08,
+                    }}
+                    className="
+                      group/payment
+                      relative
+                      overflow-hidden
+                      rounded-2xl
+                      border
+                      border-white/[0.07]
+                      bg-white/[0.035]
+                      p-4
+                      transition-all
+                      duration-300
+                      hover:border-white/[0.14]
+                      hover:bg-white/[0.06]
+                    "
+                  >
+                    <div
+                      className="
+                        pointer-events-none
+                        absolute
+                        inset-0
+                        bg-gradient-to-r
+                        from-white/[0.05]
+                        via-transparent
+                        to-transparent
+                        opacity-0
+                        transition-opacity
+                        duration-300
+                        group-hover/payment:opacity-100
+                      "
+                    />
+
+                    <div
+                      className="
+                        relative
+                        flex
+                        items-center
+                        justify-between
+                        gap-3
+                        sm:gap-4
+                      "
+                    >
+                      <div className="flex min-w-0 items-center gap-3 sm:gap-4">
+                        <div
+                          className={`
+                            flex
+                            h-11
+                            w-11
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-2xl
+                            border
+                            ${visuals.border}
+                            ${visuals.iconBg}
+                            ${visuals.color}
+                            sm:h-12
+                            sm:w-12
+                          `}
+                        >
+                          <Icon
+                            size={20}
+                            strokeWidth={1.8}
+                          />
+                        </div>
+
+                        <div className="min-w-0">
+                          <div className="flex items-center gap-2">
+                            <h3
+                              className="
+                                truncate
+                                text-[13px]
+                                font-bold
+                                text-white
+                                sm:text-sm
+                              "
+                            >
+                              {loan.loanType}
+                            </h3>
+
+                            <span
+                              className="
+                                shrink-0
+                                rounded-full
+                                border
+                                border-emerald-400/10
+                                bg-emerald-400/[0.06]
+                                px-2
+                                py-0.5
+                                text-[7px]
+                                font-bold
+                                uppercase
+                                tracking-wider
+                                text-emerald-400
+                              "
+                            >
+                              {loan.status}
+                            </span>
+                          </div>
+
+                          <div className="mt-1.5 flex items-center gap-2">
+                            <span
+                              className="
+                                h-1
+                                w-1
+                                shrink-0
+                                rounded-full
+                                bg-slate-600
+                              "
+                            />
+
+                            <p className="truncate text-[11px] text-slate-500 sm:text-xs">
+                              {loan.nextPaymentDate
+                                ? `Due ${formatPaymentDate(
+                                    loan.nextPaymentDate
+                                  )}`
+                                : "Next payment not scheduled"}
+                            </p>
+                          </div>
+                        </div>
+                      </div>
+
+                      <div className="shrink-0 text-right">
+                        <h3
+                          className="
+                            text-base
+                            font-bold
+                            tracking-tight
+                            text-white
+                            sm:text-lg
+                          "
+                        >
+                          {formatCurrency(
+                            loan.monthlyEmi
+                          )}
+                        </h3>
+
+                        <span
+                          className={`
+                            mt-1.5
+                            inline-flex
+                            items-center
+                            rounded-full
+                            border
+                            px-2
+                            py-1
+                            text-[8px]
+                            font-bold
+                            uppercase
+                            tracking-wider
+                            sm:px-2.5
+                            sm:text-[9px]
+                            ${paymentStatus.className}
+                          `}
+                        >
+                          {paymentStatus.label}
+                        </span>
+                      </div>
+                    </div>
+
+                    <div
+                      className="
+                        relative
+                        mt-4
+                        grid
+                        grid-cols-2
+                        gap-3
+                        border-t
+                        border-white/[0.05]
+                        pt-3
+                      "
+                    >
+                      <div>
+                        <span
+                          className="
+                            block
+                            text-[9px]
+                            font-medium
+                            uppercase
+                            tracking-[0.12em]
+                            text-slate-600
+                          "
+                        >
+                          Principal
+                        </span>
+
+                        <span
+                          className="
+                            mt-1
+                            block
+                            text-[11px]
+                            font-semibold
+                            text-slate-400
+                          "
+                        >
+                          {formatCurrency(
+                            loan.principalAmount
+                          )}
+                        </span>
+                      </div>
+
+                      <div className="text-right">
+                        <span
+                          className="
+                            block
+                            text-[9px]
+                            font-medium
+                            uppercase
+                            tracking-[0.12em]
+                            text-slate-600
+                          "
+                        >
+                          Remaining
+                        </span>
+
+                        <span
+                          className="
+                            mt-1
+                            block
+                            text-[11px]
+                            font-semibold
+                            text-slate-400
+                          "
+                        >
+                          {formatCurrency(
+                            loan.remainingAmount
+                          )}
+                        </span>
+                      </div>
+                    </div>
+                  </motion.div>
+                );
+              })}
+          </div>
+        )}
+
+      {/* SUMMARY */}
+
+      {!loading &&
+        !error &&
+        sortedLoans.length > 0 && (
           <div
             className="
-              pointer-events-none
-              absolute
-              inset-0
-              -translate-x-full
-              bg-gradient-to-r
-              from-transparent
-              via-white/15
-              to-transparent
-              transition-transform
-              duration-700
-              group-hover/button:translate-x-full
+              relative
+              mt-5
+              grid
+              grid-cols-2
+              gap-3
             "
-          />
-        </motion.button>
-      )}
+          >
+            <div
+              className="
+                rounded-2xl
+                border
+                border-white/[0.06]
+                bg-white/[0.025]
+                px-4
+                py-3.5
+              "
+            >
+              <p
+                className="
+                  text-[8px]
+                  font-semibold
+                  uppercase
+                  tracking-[0.15em]
+                  text-slate-600
+                  sm:text-[9px]
+                "
+              >
+                Total Upcoming EMI
+              </p>
+
+              <p
+                className="
+                  mt-1
+                  text-base
+                  font-bold
+                  text-slate-200
+                  sm:text-lg
+                "
+              >
+                {formatCurrency(totalUpcoming)}
+              </p>
+            </div>
+
+            <div
+              className="
+                rounded-2xl
+                border
+                border-cyan-400/10
+                bg-cyan-400/[0.035]
+                px-4
+                py-3.5
+                text-right
+              "
+            >
+              <p
+                className="
+                  text-[8px]
+                  font-semibold
+                  uppercase
+                  tracking-[0.15em]
+                  text-slate-600
+                  sm:text-[9px]
+                "
+              >
+                Next Due
+              </p>
+
+              <p
+                className="
+                  mt-1
+                  text-base
+                  font-semibold
+                  text-cyan-400
+                  sm:text-lg
+                "
+              >
+                {nextDueDate
+                  ? formatPaymentDate(nextDueDate)
+                  : "Not scheduled"}
+              </p>
+            </div>
+          </div>
+        )}
+
+      {/* VIEW ALL */}
+
+      {!loading &&
+        !error &&
+        sortedLoans.length > 0 && (
+          <motion.button
+            type="button"
+            onClick={handleViewAllPayments}
+            whileHover={{
+              y: -2,
+            }}
+            whileTap={{
+              scale: 0.985,
+            }}
+            className="
+              group/button
+              relative
+              mt-5
+              flex
+              w-full
+              items-center
+              justify-center
+              gap-2
+              overflow-hidden
+              rounded-xl
+              border
+              border-blue-500/20
+              bg-gradient-to-r
+              from-blue-600
+              to-cyan-500
+              py-3
+              text-sm
+              font-bold
+              text-white
+              shadow-lg
+              shadow-blue-500/10
+              transition-all
+              duration-300
+              hover:border-cyan-300/30
+              hover:shadow-xl
+              hover:shadow-blue-500/20
+            "
+          >
+            <span
+              className="
+                relative
+                z-10
+                flex
+                items-center
+                gap-2
+              "
+            >
+              View All Payments
+
+              <ArrowRight
+                size={17}
+                className="
+                  transition-transform
+                  duration-300
+                  group-hover/button:translate-x-1
+                "
+              />
+            </span>
+          </motion.button>
+        )}
+
+      {/* FOOTER */}
 
       <div
         className="
@@ -1068,7 +1370,6 @@ const UpcomingPayments = () => {
             tracking-[0.14em]
             text-slate-600
             sm:text-[9px]
-            sm:tracking-[0.15em]
           "
         >
           SmartBank payment monitoring

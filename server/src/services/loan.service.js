@@ -16,6 +16,107 @@ function toNumber(value) {
   return number;
 }
 
+// ==========================================
+// CALCULATE MONTHLY EMI
+// ==========================================
+
+function calculateMonthlyEmi(
+  principalAmount,
+  annualInterestRate,
+  tenureMonths
+) {
+  const principal = Number(principalAmount);
+  const annualRate = Number(annualInterestRate);
+  const tenure = Number(tenureMonths);
+
+  if (
+    !Number.isFinite(principal) ||
+    principal <= 0 ||
+    !Number.isFinite(annualRate) ||
+    annualRate < 0 ||
+    !Number.isInteger(tenure) ||
+    tenure <= 0
+  ) {
+    return null;
+  }
+
+  if (annualRate === 0) {
+    return Number((principal / tenure).toFixed(2));
+  }
+
+  const monthlyRate = annualRate / 12 / 100;
+
+  const emi =
+    (principal *
+      monthlyRate *
+      Math.pow(1 + monthlyRate, tenure)) /
+    (Math.pow(1 + monthlyRate, tenure) - 1);
+
+  if (!Number.isFinite(emi)) {
+    return null;
+  }
+
+  return Number(emi.toFixed(2));
+}
+
+// ==========================================
+// CALCULATE NEXT PAYMENT DATE
+// ==========================================
+
+function calculateNextPaymentDate(baseDate = new Date()) {
+  const date = new Date(baseDate);
+
+  if (Number.isNaN(date.getTime())) {
+    return null;
+  }
+
+  const nextDate = new Date(date);
+
+  nextDate.setMonth(nextDate.getMonth() + 1);
+
+  return nextDate;
+}
+
+// ==========================================
+// GET NEXT VALID PAYMENT DATE
+// ==========================================
+
+function getNextValidPaymentDate(
+  currentDate,
+  createdAt = new Date()
+) {
+  const baseDate = currentDate
+    ? new Date(currentDate)
+    : new Date(createdAt);
+
+  if (Number.isNaN(baseDate.getTime())) {
+    return null;
+  }
+
+  const today = new Date();
+
+  let nextDate = new Date(baseDate);
+
+  /*
+   * If the stored due date is already in the past,
+   * move it forward month-by-month until it reaches
+   * the next upcoming payment date.
+   */
+  while (nextDate < today) {
+    nextDate = calculateNextPaymentDate(nextDate);
+
+    if (!nextDate) {
+      return null;
+    }
+  }
+
+  return nextDate;
+}
+
+// ==========================================
+// SERIALIZE LOAN
+// ==========================================
+
 function serializeLoan(loan) {
   if (!loan) {
     return null;
@@ -84,7 +185,76 @@ async function getActiveLoans(userId) {
     ],
   });
 
-  return loans.map(serializeLoan);
+  /*
+   * 6.4.5
+   *
+   * Ensure every active loan has a valid
+   * upcoming payment date.
+   */
+  const normalizedLoans = [];
+
+  for (const loan of loans) {
+    let nextPaymentDate = loan.nextPaymentDate;
+
+    if (!nextPaymentDate) {
+      nextPaymentDate = calculateNextPaymentDate(
+        loan.createdAt || new Date()
+      );
+    } else {
+      nextPaymentDate = getNextValidPaymentDate(
+        nextPaymentDate,
+        loan.createdAt || new Date()
+      );
+    }
+
+    /*
+     * Persist the calculated date if the database
+     * value is missing or outdated.
+     */
+    if (
+      nextPaymentDate &&
+      (!loan.nextPaymentDate ||
+        new Date(loan.nextPaymentDate).getTime() !==
+          new Date(nextPaymentDate).getTime())
+    ) {
+      const updatedLoan = await prisma.loan.update({
+        where: {
+          id: loan.id,
+        },
+        data: {
+          nextPaymentDate,
+        },
+      });
+
+      normalizedLoans.push(
+        serializeLoan(updatedLoan)
+      );
+    } else {
+      normalizedLoans.push(
+        serializeLoan(loan)
+      );
+    }
+  }
+
+  /*
+   * Sort again after calculating dates.
+   */
+  normalizedLoans.sort((a, b) => {
+    if (!a.nextPaymentDate) {
+      return 1;
+    }
+
+    if (!b.nextPaymentDate) {
+      return -1;
+    }
+
+    return (
+      new Date(a.nextPaymentDate).getTime() -
+      new Date(b.nextPaymentDate).getTime()
+    );
+  });
+
+  return normalizedLoans;
 }
 
 // ==========================================
@@ -130,17 +300,12 @@ async function createLoan(userId, data) {
     principalAmount,
     interestRate,
     tenureMonths,
-    monthlyEmi,
     totalPayable,
     paidAmount,
     remainingAmount,
     nextPaymentDate,
     status,
   } = data || {};
-
-  // ------------------------------------------
-  // REQUIRED FIELDS
-  // ------------------------------------------
 
   if (!loanType) {
     throw new Error("Loan type is required");
@@ -149,46 +314,70 @@ async function createLoan(userId, data) {
   const principal = toNumber(principalAmount);
   const rate = toNumber(interestRate);
   const tenure = Number(tenureMonths);
-  const emi = toNumber(monthlyEmi);
 
   if (principal === null || principal <= 0) {
-    throw new Error("Principal amount must be greater than 0");
+    throw new Error(
+      "Principal amount must be greater than 0"
+    );
   }
 
   if (rate === null || rate < 0) {
-    throw new Error("Interest rate cannot be negative");
+    throw new Error(
+      "Interest rate cannot be negative"
+    );
   }
 
   if (!Number.isInteger(tenure) || tenure <= 0) {
-    throw new Error("Tenure must be a positive number of months");
+    throw new Error(
+      "Tenure must be a positive number of months"
+    );
   }
 
-  if (emi === null || emi <= 0) {
-    throw new Error("Monthly EMI must be greater than 0");
+  // ==========================================
+  // CALCULATE EMI
+  // ==========================================
+
+  const calculatedEmi = calculateMonthlyEmi(
+    principal,
+    rate,
+    tenure
+  );
+
+  if (
+    calculatedEmi === null ||
+    calculatedEmi <= 0
+  ) {
+    throw new Error(
+      "Unable to calculate monthly EMI"
+    );
   }
 
-  // ------------------------------------------
-  // CALCULATE TOTAL PAYABLE
-  // ------------------------------------------
+  // ==========================================
+  // TOTAL PAYABLE
+  // ==========================================
 
   const calculatedTotalPayable =
-    totalPayable !== undefined && totalPayable !== null
+    totalPayable !== undefined &&
+    totalPayable !== null
       ? toNumber(totalPayable)
-      : emi * tenure;
+      : calculatedEmi * tenure;
 
   if (
     calculatedTotalPayable === null ||
     calculatedTotalPayable <= 0
   ) {
-    throw new Error("Total payable amount must be greater than 0");
+    throw new Error(
+      "Total payable amount must be greater than 0"
+    );
   }
 
-  // ------------------------------------------
-  // PAID / REMAINING AMOUNT
-  // ------------------------------------------
+  // ==========================================
+  // PAID AMOUNT
+  // ==========================================
 
   const normalizedPaidAmount =
-    paidAmount !== undefined && paidAmount !== null
+    paidAmount !== undefined &&
+    paidAmount !== null
       ? toNumber(paidAmount)
       : 0;
 
@@ -196,15 +385,22 @@ async function createLoan(userId, data) {
     normalizedPaidAmount === null ||
     normalizedPaidAmount < 0
   ) {
-    throw new Error("Paid amount cannot be negative");
+    throw new Error(
+      "Paid amount cannot be negative"
+    );
   }
+
+  // ==========================================
+  // REMAINING AMOUNT
+  // ==========================================
 
   const calculatedRemainingAmount =
     remainingAmount !== undefined &&
     remainingAmount !== null
       ? toNumber(remainingAmount)
       : Math.max(
-          calculatedTotalPayable - normalizedPaidAmount,
+          calculatedTotalPayable -
+            normalizedPaidAmount,
           0
         );
 
@@ -212,12 +408,14 @@ async function createLoan(userId, data) {
     calculatedRemainingAmount === null ||
     calculatedRemainingAmount < 0
   ) {
-    throw new Error("Remaining amount cannot be negative");
+    throw new Error(
+      "Remaining amount cannot be negative"
+    );
   }
 
-  // ------------------------------------------
+  // ==========================================
   // STATUS
-  // ------------------------------------------
+  // ==========================================
 
   const normalizedStatus =
     String(status || "ACTIVE")
@@ -236,25 +434,36 @@ async function createLoan(userId, data) {
     throw new Error("Invalid loan status");
   }
 
-  // ------------------------------------------
+  // ==========================================
   // NEXT PAYMENT DATE
-  // ------------------------------------------
+  // ==========================================
 
-  let normalizedNextPaymentDate = null;
+  let normalizedNextPaymentDate;
 
   if (nextPaymentDate) {
     const parsedDate = new Date(nextPaymentDate);
 
     if (Number.isNaN(parsedDate.getTime())) {
-      throw new Error("Invalid next payment date");
+      throw new Error(
+        "Invalid next payment date"
+      );
     }
 
     normalizedNextPaymentDate = parsedDate;
+  } else {
+    normalizedNextPaymentDate =
+      calculateNextPaymentDate(new Date());
+
+    if (!normalizedNextPaymentDate) {
+      throw new Error(
+        "Unable to calculate next payment date"
+      );
+    }
   }
 
-  // ------------------------------------------
+  // ==========================================
   // CREATE
-  // ------------------------------------------
+  // ==========================================
 
   const loan = await prisma.loan.create({
     data: {
@@ -263,7 +472,7 @@ async function createLoan(userId, data) {
       principalAmount: principal,
       interestRate: rate,
       tenureMonths: tenure,
-      monthlyEmi: emi,
+      monthlyEmi: calculatedEmi,
       totalPayable: calculatedTotalPayable,
       paidAmount: normalizedPaidAmount,
       remainingAmount: calculatedRemainingAmount,
@@ -303,56 +512,74 @@ async function updateLoan(userId, loanId, data) {
 
   const updateData = {};
 
-  // ------------------------------------------
+  // ==========================================
   // LOAN TYPE
-  // ------------------------------------------
+  // ==========================================
 
   if (data?.loanType !== undefined) {
     const loanType = String(data.loanType).trim();
 
     if (!loanType) {
-      throw new Error("Loan type cannot be empty");
+      throw new Error(
+        "Loan type cannot be empty"
+      );
     }
 
     updateData.loanType = loanType;
   }
 
-  // ------------------------------------------
+  // ==========================================
   // PRINCIPAL
-  // ------------------------------------------
+  // ==========================================
 
   if (data?.principalAmount !== undefined) {
-    const principal = toNumber(data.principalAmount);
+    const principal = toNumber(
+      data.principalAmount
+    );
 
-    if (principal === null || principal <= 0) {
-      throw new Error("Principal amount must be greater than 0");
+    if (
+      principal === null ||
+      principal <= 0
+    ) {
+      throw new Error(
+        "Principal amount must be greater than 0"
+      );
     }
 
     updateData.principalAmount = principal;
   }
 
-  // ------------------------------------------
+  // ==========================================
   // INTEREST RATE
-  // ------------------------------------------
+  // ==========================================
 
   if (data?.interestRate !== undefined) {
-    const rate = toNumber(data.interestRate);
+    const rate = toNumber(
+      data.interestRate
+    );
 
     if (rate === null || rate < 0) {
-      throw new Error("Interest rate cannot be negative");
+      throw new Error(
+        "Interest rate cannot be negative"
+      );
     }
 
     updateData.interestRate = rate;
   }
 
-  // ------------------------------------------
+  // ==========================================
   // TENURE
-  // ------------------------------------------
+  // ==========================================
 
   if (data?.tenureMonths !== undefined) {
-    const tenure = Number(data.tenureMonths);
+    const tenure = Number(
+      data.tenureMonths
+    );
 
-    if (!Number.isInteger(tenure) || tenure <= 0) {
+    if (
+      !Number.isInteger(tenure) ||
+      tenure <= 0
+    ) {
       throw new Error(
         "Tenure must be a positive number of months"
       );
@@ -361,44 +588,59 @@ async function updateLoan(userId, loanId, data) {
     updateData.tenureMonths = tenure;
   }
 
-  // ------------------------------------------
+  // ==========================================
   // MONTHLY EMI
-  // ------------------------------------------
+  // ==========================================
 
   if (data?.monthlyEmi !== undefined) {
-    const emi = toNumber(data.monthlyEmi);
+    const emi = toNumber(
+      data.monthlyEmi
+    );
 
     if (emi === null || emi <= 0) {
-      throw new Error("Monthly EMI must be greater than 0");
+      throw new Error(
+        "Monthly EMI must be greater than 0"
+      );
     }
 
     updateData.monthlyEmi = emi;
   }
 
-  // ------------------------------------------
+  // ==========================================
   // TOTAL PAYABLE
-  // ------------------------------------------
+  // ==========================================
 
   if (data?.totalPayable !== undefined) {
-    const totalPayable = toNumber(data.totalPayable);
+    const totalPayable = toNumber(
+      data.totalPayable
+    );
 
-    if (totalPayable === null || totalPayable <= 0) {
+    if (
+      totalPayable === null ||
+      totalPayable <= 0
+    ) {
       throw new Error(
         "Total payable amount must be greater than 0"
       );
     }
 
-    updateData.totalPayable = totalPayable;
+    updateData.totalPayable =
+      totalPayable;
   }
 
-  // ------------------------------------------
+  // ==========================================
   // PAID AMOUNT
-  // ------------------------------------------
+  // ==========================================
 
   if (data?.paidAmount !== undefined) {
-    const paidAmount = toNumber(data.paidAmount);
+    const paidAmount = toNumber(
+      data.paidAmount
+    );
 
-    if (paidAmount === null || paidAmount < 0) {
+    if (
+      paidAmount === null ||
+      paidAmount < 0
+    ) {
       throw new Error(
         "Paid amount cannot be negative"
       );
@@ -407,9 +649,9 @@ async function updateLoan(userId, loanId, data) {
     updateData.paidAmount = paidAmount;
   }
 
-  // ------------------------------------------
+  // ==========================================
   // REMAINING AMOUNT
-  // ------------------------------------------
+  // ==========================================
 
   if (data?.remainingAmount !== undefined) {
     const remainingAmount = toNumber(
@@ -425,18 +667,24 @@ async function updateLoan(userId, loanId, data) {
       );
     }
 
-    updateData.remainingAmount = remainingAmount;
+    updateData.remainingAmount =
+      remainingAmount;
   }
 
-  // ------------------------------------------
+  // ==========================================
   // NEXT PAYMENT DATE
-  // ------------------------------------------
+  // ==========================================
 
   if (data?.nextPaymentDate !== undefined) {
     if (!data.nextPaymentDate) {
-      updateData.nextPaymentDate = null;
+      updateData.nextPaymentDate =
+        calculateNextPaymentDate(
+          existingLoan.createdAt || new Date()
+        );
     } else {
-      const parsedDate = new Date(data.nextPaymentDate);
+      const parsedDate = new Date(
+        data.nextPaymentDate
+      );
 
       if (Number.isNaN(parsedDate.getTime())) {
         throw new Error(
@@ -444,13 +692,14 @@ async function updateLoan(userId, loanId, data) {
         );
       }
 
-      updateData.nextPaymentDate = parsedDate;
+      updateData.nextPaymentDate =
+        parsedDate;
     }
   }
 
-  // ------------------------------------------
+  // ==========================================
   // STATUS
-  // ------------------------------------------
+  // ==========================================
 
   if (data?.status !== undefined) {
     const status = String(data.status)
@@ -466,15 +715,17 @@ async function updateLoan(userId, loanId, data) {
     ];
 
     if (!allowedStatuses.includes(status)) {
-      throw new Error("Invalid loan status");
+      throw new Error(
+        "Invalid loan status"
+      );
     }
 
     updateData.status = status;
   }
 
-  // ------------------------------------------
+  // ==========================================
   // UPDATE
-  // ------------------------------------------
+  // ==========================================
 
   const updatedLoan = await prisma.loan.update({
     where: {
@@ -589,4 +840,6 @@ module.exports = {
   updateLoan,
   deleteLoan,
   getLoanSummary,
+  calculateMonthlyEmi,
+  calculateNextPaymentDate,
 };
