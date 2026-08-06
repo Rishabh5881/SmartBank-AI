@@ -20,6 +20,10 @@ const cardRoutes = require("./routes/card.routes");
 const goalRoutes = require("./routes/goal.routes");
 const loanRoutes = require("./routes/loan.routes");
 
+// ADMIN ROUTES
+const adminRoutes = require("./routes/admin.routes");
+const adminLoanRoutes = require("./routes/adminLoan.routes");
+
 // =====================
 // ERROR MIDDLEWARE
 // =====================
@@ -45,8 +49,6 @@ const allowedOrigins = [
 app.use(
   cors({
     origin: function (origin, callback) {
-      // Allow requests without an Origin header
-      // such as Postman/server-to-server requests.
       if (!origin) {
         return callback(null, true);
       }
@@ -61,6 +63,23 @@ app.use(
     },
 
     credentials: true,
+
+    allowedHeaders: [
+      "Origin",
+      "X-Requested-With",
+      "Content-Type",
+      "Accept",
+      "Authorization",
+    ],
+
+    methods: [
+      "GET",
+      "POST",
+      "PUT",
+      "PATCH",
+      "DELETE",
+      "OPTIONS",
+    ],
   })
 );
 
@@ -70,10 +89,6 @@ app.use(
 
 const apiLimiter = rateLimit({
   windowMs: 15 * 60 * 1000,
-
-  // Development-friendly limit.
-  // This prevents the dashboard's multiple API
-  // requests from immediately hitting the limiter.
   max: 500,
 
   standardHeaders: true,
@@ -110,6 +125,46 @@ app.use(
 // =====================
 
 app.use(cookieParser());
+
+// =====================
+// AUTH REQUEST DEBUG
+// =====================
+
+app.use("/api", (req, res, next) => {
+  const authorization =
+    req.headers.authorization || "";
+
+  console.log(
+    "========== SMARTBANK API DEBUG =========="
+  );
+
+  console.log("METHOD:", req.method);
+
+  console.log("URL:", req.originalUrl);
+
+  console.log(
+    "AUTHORIZATION PRESENT:",
+    Boolean(authorization)
+  );
+
+  console.log(
+    "AUTHORIZATION PREFIX:",
+    authorization
+      ? authorization.slice(0, 20)
+      : "NONE"
+  );
+
+  console.log(
+    "ORIGIN:",
+    req.headers.origin || "NONE"
+  );
+
+  console.log(
+    "=========================================="
+  );
+
+  next();
+});
 
 // =====================
 // HEALTH CHECK
@@ -186,6 +241,37 @@ app.use(
 app.use(
   "/api/loans",
   loanRoutes
+);
+
+// =====================
+// ADMIN ROUTES
+// =====================
+//
+// GET /api/admin/overview
+// GET /api/admin/customers
+// GET /api/admin/activity
+// GET /api/admin/customers/:userId
+//
+
+app.use(
+  "/api/admin",
+  adminRoutes
+);
+
+// =====================
+// ADMIN LOAN ROUTES
+// =====================
+//
+// GET    /api/admin/loans
+// GET    /api/admin/loans/pending
+// GET    /api/admin/loans/:id
+// PATCH  /api/admin/loans/:id/approve
+// PATCH  /api/admin/loans/:id/reject
+//
+
+app.use(
+  "/api/admin/loans",
+  adminLoanRoutes
 );
 
 // =====================

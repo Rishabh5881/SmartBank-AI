@@ -15,6 +15,7 @@ import {
   CheckCircle2,
   Activity,
   ChevronRight,
+  Fingerprint,
 } from "lucide-react";
 
 const CardDetails = ({
@@ -50,6 +51,22 @@ const CardDetails = ({
   }
 
   const isFrozen = card.frozen;
+
+  // =====================================================
+  // CARD FINANCIAL VALUES
+  // =====================================================
+
+  const cardBalance = Number(card.balance || 0);
+  const cardLimit = Number(card.limit || 0);
+  const cardInterest = Number(card.interest || 0);
+
+  const formatAmount = (value) => {
+    return new Intl.NumberFormat("en-IN", {
+      style: "currency",
+      currency: "INR",
+      maximumFractionDigits: 2,
+    }).format(value);
+  };
 
   return (
     <AnimatePresence>
@@ -138,12 +155,15 @@ const CardDetails = ({
           ===================================================== */}
 
           <div className="relative space-y-5 p-5 sm:p-7">
+
             {/* =================================================
                 CARD PREVIEW
             ================================================= */}
 
             <div
-              className={`group relative h-56 overflow-hidden rounded-[27px] bg-gradient-to-br ${card.color} p-[1px] shadow-2xl ${
+              className={`group relative h-56 overflow-hidden rounded-[27px] bg-gradient-to-br ${
+                card.color || "from-cyan-500 to-blue-600"
+              } p-[1px] shadow-2xl ${
                 isFrozen
                   ? "shadow-blue-950/20"
                   : "shadow-black/30"
@@ -156,8 +176,6 @@ const CardDetails = ({
                     : "bg-slate-950/10"
                 }`}
               >
-                {/* Glow */}
-
                 <div className="pointer-events-none absolute -right-20 -top-20 h-48 w-48 rounded-full bg-white/15 blur-3xl" />
 
                 <div className="pointer-events-none absolute -bottom-24 -left-16 h-40 w-40 rounded-full bg-cyan-300/10 blur-3xl" />
@@ -197,9 +215,7 @@ const CardDetails = ({
 
                 <div className="relative mt-6 h-8 w-12 overflow-hidden rounded-md border border-yellow-100/30 bg-gradient-to-br from-yellow-100 via-yellow-300 to-yellow-500">
                   <div className="absolute left-1/2 top-0 h-full w-px bg-yellow-700/20" />
-
                   <div className="absolute left-0 top-1/2 h-px w-full bg-yellow-700/20" />
-
                   <div className="absolute left-1/2 top-1/2 h-4 w-5 -translate-x-1/2 -translate-y-1/2 rounded border border-yellow-700/20" />
                 </div>
 
@@ -253,10 +269,13 @@ const CardDetails = ({
             </div>
 
             {/* =================================================
-                STATUS
+                STATUS + LIMIT + BALANCE
             ================================================= */}
 
-            <div className="grid gap-3 sm:grid-cols-2">
+            <div className="grid gap-3 sm:grid-cols-3">
+
+              {/* STATUS */}
+
               <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
                 <div className="flex items-center justify-between">
                   <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-emerald-400/10">
@@ -280,7 +299,9 @@ const CardDetails = ({
                         : "text-emerald-400"
                     }`}
                   >
-                    {isFrozen ? "Security Lock" : "Operational"}
+                    {isFrozen
+                      ? "Security Lock"
+                      : "Operational"}
                   </span>
                 </div>
 
@@ -292,6 +313,8 @@ const CardDetails = ({
                   {isFrozen ? "Frozen" : "Active"}
                 </p>
               </div>
+
+              {/* LIMIT */}
 
               <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
                 <div className="flex items-center justify-between">
@@ -312,7 +335,32 @@ const CardDetails = ({
                 </p>
 
                 <p className="mt-1 text-lg font-bold text-white">
-                  {card.limit || "$0"}
+                  {formatAmount(cardLimit)}
+                </p>
+              </div>
+
+              {/* BALANCE */}
+
+              <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
+                <div className="flex items-center justify-between">
+                  <div className="flex h-9 w-9 items-center justify-center rounded-xl bg-blue-400/10">
+                    <CircleDollarSign
+                      size={17}
+                      className="text-blue-400"
+                    />
+                  </div>
+
+                  <span className="text-[9px] font-bold uppercase tracking-[0.15em] text-slate-600">
+                    Balance
+                  </span>
+                </div>
+
+                <p className="mt-4 text-[10px] font-medium uppercase tracking-[0.14em] text-slate-600">
+                  Card Balance
+                </p>
+
+                <p className="mt-1 text-lg font-bold text-white">
+                  {formatAmount(cardBalance)}
                 </p>
               </div>
             </div>
@@ -336,6 +384,31 @@ const CardDetails = ({
               </div>
 
               <div className="grid grid-cols-2 gap-px bg-white/[0.04]">
+
+                {/* Card ID */}
+
+                <div className="bg-[#07101f] p-4">
+                  <div className="flex items-center gap-2">
+                    <Fingerprint
+                      size={13}
+                      className="text-slate-600"
+                    />
+
+                    <p className="text-[9px] font-bold uppercase tracking-[0.14em] text-slate-600">
+                      Card ID
+                    </p>
+                  </div>
+
+                  <p
+                    className="mt-2 truncate font-mono text-xs font-semibold text-slate-200"
+                    title={card.id}
+                  >
+                    {card.id || "Not available"}
+                  </p>
+                </div>
+
+                {/* Validity */}
+
                 <div className="bg-[#07101f] p-4">
                   <div className="flex items-center gap-2">
                     <CalendarDays
@@ -353,6 +426,8 @@ const CardDetails = ({
                   </p>
                 </div>
 
+                {/* Interest */}
+
                 <div className="bg-[#07101f] p-4">
                   <div className="flex items-center gap-2">
                     <CircleDollarSign
@@ -366,7 +441,7 @@ const CardDetails = ({
                   </div>
 
                   <p className="mt-2 text-sm font-semibold text-slate-200">
-                    {card.interest || "0%"}
+                    {cardInterestDisplay(cardInterest)}
                   </p>
                 </div>
               </div>
@@ -434,7 +509,9 @@ const CardDetails = ({
                   <Snowflake size={17} />
                 )}
 
-                {isFrozen ? "Unfreeze Card" : "Freeze Card"}
+                {isFrozen
+                  ? "Unfreeze Card"
+                  : "Freeze Card"}
 
                 <ChevronRight
                   size={14}
@@ -477,4 +554,13 @@ const CardDetails = ({
   );
 };
 
+// =====================================================
+// INTEREST DISPLAY
+// =====================================================
+
+const cardInterestDisplay = (interest) => {
+  return `${interest}%`;
+};
+
 export default CardDetails;
+

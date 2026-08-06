@@ -1,3 +1,4 @@
+
 const crypto = require("crypto");
 
 const prisma = require("../config/prisma");
@@ -7,15 +8,15 @@ const prisma = require("../config/prisma");
 // =====================================================
 
 const ALLOWED_CARD_TYPES = [
-"Debit Card",
-"Credit Card",
-"Platinum Card",
+  "Debit Card",
+  "Credit Card",
+  "Platinum Card",
 ];
 
 const ALLOWED_VALIDITY = [
-"3 Years",
-"5 Years",
-"7 Years",
+  "3 Years",
+  "5 Years",
+  "7 Years",
 ];
 
 const DEFAULT_VALIDITY = "5 Years";
@@ -26,18 +27,18 @@ const DEFAULT_VALIDITY = "5 Years";
 // =====================================================
 
 async function getUserCards(userId) {
-requireUser(userId);
+  requireUser(userId);
 
-const cards = await prisma.card.findMany({
-where: {
-userId,
-},
-orderBy: {
-createdAt: "desc",
-},
-});
+  const cards = await prisma.card.findMany({
+    where: {
+      userId,
+    },
+    orderBy: {
+      createdAt: "desc",
+    },
+  });
 
-return cards;
+  return cards;
 }
 
 // =====================================================
@@ -46,24 +47,24 @@ return cards;
 // =====================================================
 
 async function getCardById(userId, cardId) {
-requireUser(userId);
+  requireUser(userId);
 
-if (!cardId) {
-throw createError("Card ID is required", 400);
-}
+  if (!cardId) {
+    throw createError("Card ID is required", 400);
+  }
 
-const card = await prisma.card.findFirst({
-where: {
-id: cardId,
-userId,
-},
-});
+  const card = await prisma.card.findFirst({
+    where: {
+      id: cardId,
+      userId,
+    },
+  });
 
-if (!card) {
-throw createError("Card not found", 404);
-}
+  if (!card) {
+    throw createError("Card not found", 404);
+  }
 
-return card;
+  return card;
 }
 
 // =====================================================
@@ -72,133 +73,133 @@ return card;
 // =====================================================
 
 async function createCard(userId, data = {}) {
-requireUser(userId);
+  requireUser(userId);
 
-const {
-type,
-limit,
-validity,
-interest,
-holder,
-} = data;
+  const {
+    type,
+    limit,
+    validity,
+    interest,
+    holder,
+  } = data;
 
-// ===================================================
-// CARD TYPE
-// ===================================================
+  // ===================================================
+  // CARD TYPE
+  // ===================================================
 
-if (!type) {
-throw createError(
-"Card type is required",
-400
-);
-}
+  if (!type) {
+    throw createError(
+      "Card type is required",
+      400
+    );
+  }
 
-if (!ALLOWED_CARD_TYPES.includes(type)) {
-throw createError(
-`Invalid card type. Allowed types: ${ALLOWED_CARD_TYPES.join(
+  if (!ALLOWED_CARD_TYPES.includes(type)) {
+    throw createError(
+      `Invalid card type. Allowed types: ${ALLOWED_CARD_TYPES.join(
         ", "
       )}`,
-400
-);
-}
+      400
+    );
+  }
 
-// ===================================================
-// LIMIT
-// ===================================================
+  // ===================================================
+  // LIMIT
+  // ===================================================
 
-const numericLimit = parseNumericValue(
-limit,
-"Card limit"
-);
+  const numericLimit = parseNumericValue(
+    limit,
+    "Card limit"
+  );
 
-if (numericLimit < 0) {
-throw createError(
-"Card limit must be a valid non-negative number",
-400
-);
-}
+  if (numericLimit < 0) {
+    throw createError(
+      "Card limit must be a valid non-negative number",
+      400
+    );
+  }
 
-// ===================================================
-// INTEREST
-// ===================================================
+  // ===================================================
+  // INTEREST
+  // ===================================================
 
-const numericInterest = parseNumericValue(
-interest,
-"Interest rate"
-);
+  const numericInterest = parseNumericValue(
+    interest,
+    "Interest rate"
+  );
 
-if (
-numericInterest < 0 ||
-numericInterest > 100
-) {
-throw createError(
-"Interest rate must be between 0 and 100",
-400
-);
-}
+  if (
+    numericInterest < 0 ||
+    numericInterest > 100
+  ) {
+    throw createError(
+      "Interest rate must be between 0 and 100",
+      400
+    );
+  }
 
-// ===================================================
-// VALIDITY
-// ===================================================
+  // ===================================================
+  // VALIDITY
+  // ===================================================
 
-const selectedValidity =
-validity || DEFAULT_VALIDITY;
+  const selectedValidity =
+    validity || DEFAULT_VALIDITY;
 
-if (
-!ALLOWED_VALIDITY.includes(
-selectedValidity
-)
-) {
-throw createError(
-`Invalid card validity. Allowed values: ${ALLOWED_VALIDITY.join(
+  if (
+    !ALLOWED_VALIDITY.includes(
+      selectedValidity
+    )
+  ) {
+    throw createError(
+      `Invalid card validity. Allowed values: ${ALLOWED_VALIDITY.join(
         ", "
       )}`,
-400
-);
-}
+      400
+    );
+  }
 
-// ===================================================
-// HOLDER
-// ===================================================
+  // ===================================================
+  // HOLDER
+  // ===================================================
 
-const cardHolder =
-typeof holder === "string" &&
-holder.trim().length > 0
-? holder.trim().toUpperCase()
-: "SMARTBANK USER";
+  const cardHolder =
+    typeof holder === "string" &&
+    holder.trim().length > 0
+      ? holder.trim().toUpperCase()
+      : "SMARTBANK USER";
 
-// ===================================================
-// CREATE
-// ===================================================
+  // ===================================================
+  // CREATE CARD
+  // ===================================================
 
-const card = await prisma.card.create({
-data: {
-userId,
+  const card = await prisma.card.create({
+    data: {
+      userId,
 
+      type,
 
-  type,
+      number: generateCardNumber(),
 
-  number: generateCardNumber(),
+      holder: cardHolder,
 
-  holder: cardHolder,
+      expiry: generateExpiry(
+        selectedValidity
+      ),
 
-  expiry: generateExpiry(
-    selectedValidity
-  ),
+      limit: numericLimit,
 
-  limit: numericLimit,
+      // New cards start with zero outstanding balance.
+      balance: 0,
 
-  validity: selectedValidity,
+      validity: selectedValidity,
 
-  interest: numericInterest,
+      interest: numericInterest,
 
-  frozen: false,
-},
+      frozen: false,
+    },
+  });
 
-
-});
-
-return card;
+  return card;
 }
 
 // =====================================================
@@ -207,169 +208,156 @@ return card;
 // =====================================================
 
 async function updateCard(
-userId,
-cardId,
-data = {}
+  userId,
+  cardId,
+  data = {}
 ) {
-const existingCard = await getCardById(
-userId,
-cardId
-);
+  const existingCard = await getCardById(
+    userId,
+    cardId
+  );
 
-const updateData = {};
+  const updateData = {};
 
-// ===================================================
-// CARD TYPE
-// ===================================================
+  // ===================================================
+  // CARD TYPE
+  // ===================================================
 
-if (data.type !== undefined) {
-if (
-!ALLOWED_CARD_TYPES.includes(
-data.type
-)
-) {
-throw createError(
-`Invalid card type. Allowed types: ${ALLOWED_CARD_TYPES.join(
+  if (data.type !== undefined) {
+    if (
+      !ALLOWED_CARD_TYPES.includes(
+        data.type
+      )
+    ) {
+      throw createError(
+        `Invalid card type. Allowed types: ${ALLOWED_CARD_TYPES.join(
           ", "
         )}`,
-400
-);
-}
+        400
+      );
+    }
 
-```
-updateData.type = data.type;
-```
+    updateData.type = data.type;
+  }
 
-}
+  // ===================================================
+  // LIMIT
+  // ===================================================
 
-// ===================================================
-// LIMIT
-// ===================================================
+  if (data.limit !== undefined) {
+    const numericLimit =
+      parseNumericValue(
+        data.limit,
+        "Card limit"
+      );
 
-if (data.limit !== undefined) {
-const numericLimit =
-parseNumericValue(
-data.limit,
-"Card limit"
-);
+    if (numericLimit < 0) {
+      throw createError(
+        "Card limit must be a valid non-negative number",
+        400
+      );
+    }
 
-```
-if (numericLimit < 0) {
-  throw createError(
-    "Card limit must be a valid non-negative number",
-    400
-  );
-}
+    updateData.limit = numericLimit;
+  }
 
-updateData.limit = numericLimit;
-```
+  // ===================================================
+  // VALIDITY
+  // ===================================================
 
-}
-
-// ===================================================
-// VALIDITY
-// ===================================================
-
-if (data.validity !== undefined) {
-if (
-!ALLOWED_VALIDITY.includes(
-data.validity
-)
-) {
-throw createError(
-`Invalid card validity. Allowed values: ${ALLOWED_VALIDITY.join(
+  if (data.validity !== undefined) {
+    if (
+      !ALLOWED_VALIDITY.includes(
+        data.validity
+      )
+    ) {
+      throw createError(
+        `Invalid card validity. Allowed values: ${ALLOWED_VALIDITY.join(
           ", "
         )}`,
-400
-);
-}
+        400
+      );
+    }
 
-updateData.validity =
-  data.validity;
+    updateData.validity =
+      data.validity;
 
-updateData.expiry =
-  generateExpiry(data.validity);
+    updateData.expiry =
+      generateExpiry(data.validity);
+  }
 
+  // ===================================================
+  // INTEREST
+  // ===================================================
 
-}
+  if (data.interest !== undefined) {
+    const numericInterest =
+      parseNumericValue(
+        data.interest,
+        "Interest rate"
+      );
 
-// ===================================================
-// INTEREST
-// ===================================================
+    if (
+      numericInterest < 0 ||
+      numericInterest > 100
+    ) {
+      throw createError(
+        "Interest rate must be between 0 and 100",
+        400
+      );
+    }
 
-if (data.interest !== undefined) {
-const numericInterest =
-parseNumericValue(
-data.interest,
-"Interest rate"
-);
+    updateData.interest =
+      numericInterest;
+  }
 
-if (
-  numericInterest < 0 ||
-  numericInterest > 100
-) {
-  throw createError(
-    "Interest rate must be between 0 and 100",
-    400
-  );
-}
+  // ===================================================
+  // HOLDER
+  // ===================================================
 
-updateData.interest =
-  numericInterest;
+  if (data.holder !== undefined) {
+    if (
+      typeof data.holder !== "string" ||
+      !data.holder.trim()
+    ) {
+      throw createError(
+        "Card holder name must be valid",
+        400
+      );
+    }
 
+    updateData.holder =
+      data.holder
+        .trim()
+        .toUpperCase();
+  }
 
-}
+  // ===================================================
+  // NO VALID FIELDS
+  // ===================================================
 
-// ===================================================
-// HOLDER
-// ===================================================
+  if (
+    Object.keys(updateData).length === 0
+  ) {
+    throw createError(
+      "No valid card fields provided for update",
+      400
+    );
+  }
 
-if (data.holder !== undefined) {
-if (
-typeof data.holder !== "string" ||
-!data.holder.trim()
-) {
-throw createError(
-"Card holder name must be valid",
-400
-);
-}
+  // ===================================================
+  // UPDATE
+  // ===================================================
 
+  const updatedCard =
+    await prisma.card.update({
+      where: {
+        id: existingCard.id,
+      },
+      data: updateData,
+    });
 
-updateData.holder =
-  data.holder
-    .trim()
-    .toUpperCase();
-
-
-}
-
-// ===================================================
-// NO VALID FIELDS
-// ===================================================
-
-if (
-Object.keys(updateData).length === 0
-) {
-throw createError(
-"No valid card fields provided for update",
-400
-);
-}
-
-// ===================================================
-// UPDATE
-// ===================================================
-
-const updatedCard =
-await prisma.card.update({
-where: {
-id: existingCard.id,
-},
-data: updateData,
-});
-
-return updatedCard;
+  return updatedCard;
 }
 
 // =====================================================
@@ -378,26 +366,26 @@ return updatedCard;
 // =====================================================
 
 async function toggleFreezeCard(
-userId,
-cardId
+  userId,
+  cardId
 ) {
-const existingCard =
-await getCardById(
-userId,
-cardId
-);
+  const existingCard =
+    await getCardById(
+      userId,
+      cardId
+    );
 
-const updatedCard =
-await prisma.card.update({
-where: {
-id: existingCard.id,
-},
-data: {
-frozen: !existingCard.frozen,
-},
-});
+  const updatedCard =
+    await prisma.card.update({
+      where: {
+        id: existingCard.id,
+      },
+      data: {
+        frozen: !existingCard.frozen,
+      },
+    });
 
-return updatedCard;
+  return updatedCard;
 }
 
 // =====================================================
@@ -406,25 +394,25 @@ return updatedCard;
 // =====================================================
 
 async function deleteCard(
-userId,
-cardId
+  userId,
+  cardId
 ) {
-const existingCard =
-await getCardById(
-userId,
-cardId
-);
+  const existingCard =
+    await getCardById(
+      userId,
+      cardId
+    );
 
-await prisma.card.delete({
-where: {
-id: existingCard.id,
-},
-});
+  await prisma.card.delete({
+    where: {
+      id: existingCard.id,
+    },
+  });
 
-return {
-id: existingCard.id,
-message: "Card deleted successfully",
-};
+  return {
+    id: existingCard.id,
+    message: "Card deleted successfully",
+  };
 }
 
 // =====================================================
@@ -433,84 +421,81 @@ message: "Card deleted successfully",
 // =====================================================
 
 async function getCardSummary(userId) {
-requireUser(userId);
+  requireUser(userId);
 
-const cards =
-await prisma.card.findMany({
-where: {
-userId,
-},
-});
+  const cards =
+    await prisma.card.findMany({
+      where: {
+        userId,
+      },
+    });
 
-const activeCards =
-cards.filter(
-(card) => !card.frozen
-);
+  const activeCards =
+    cards.filter(
+      (card) => !card.frozen
+    );
 
-const frozenCards =
-cards.filter(
-(card) => card.frozen
-);
+  const frozenCards =
+    cards.filter(
+      (card) => card.frozen
+    );
 
-const creditCards =
-cards.filter(
-(card) =>
-card.type === "Credit Card"
-);
+  const creditCards =
+    cards.filter(
+      (card) =>
+        card.type === "Credit Card"
+    );
 
-const debitCards =
-cards.filter(
-(card) =>
-card.type === "Debit Card"
-);
+  const debitCards =
+    cards.filter(
+      (card) =>
+        card.type === "Debit Card"
+    );
 
-const platinumCards =
-cards.filter(
-(card) =>
-card.type === "Platinum Card"
-);
+  const platinumCards =
+    cards.filter(
+      (card) =>
+        card.type === "Platinum Card"
+    );
 
-const totalLimit =
-cards.reduce(
-(total, card) =>
-total +
-Number(card.limit || 0),
-0
-);
+  const totalLimit =
+    cards.reduce(
+      (total, card) =>
+        total +
+        Number(card.limit || 0),
+      0
+    );
 
-const totalInterest =
-cards.reduce(
-(total, card) =>
-total +
-Number(card.interest || 0),
-0
-);
+  const totalInterest =
+    cards.reduce(
+      (total, card) =>
+        total +
+        Number(card.interest || 0),
+      0
+    );
 
-return {
-totalCards: cards.length,
+  return {
+    totalCards: cards.length,
 
+    activeCards:
+      activeCards.length,
 
-activeCards:
-  activeCards.length,
+    frozenCards:
+      frozenCards.length,
 
-frozenCards:
-  frozenCards.length,
+    creditCards:
+      creditCards.length,
 
-creditCards:
-  creditCards.length,
+    debitCards:
+      debitCards.length,
 
-debitCards:
-  debitCards.length,
+    platinumCards:
+      platinumCards.length,
 
-platinumCards:
-  platinumCards.length,
+    totalLimit,
 
-totalLimit,
-
-totalInterest,
-
-
-};
+    totalInterest,
+  };
 }
 
 // =====================================================
@@ -526,41 +511,41 @@ totalInterest,
 // =====================================================
 
 function parseNumericValue(
-value,
-fieldName
+  value,
+  fieldName
 ) {
-if (
-value === undefined ||
-value === null ||
-value === ""
-) {
-return 0;
-}
+  if (
+    value === undefined ||
+    value === null ||
+    value === ""
+  ) {
+    return 0;
+  }
 
-let normalizedValue = value;
+  let normalizedValue = value;
 
-if (
-typeof normalizedValue === "string"
-) {
-normalizedValue =
-normalizedValue
-.replace(/[$₹,\s%]/g, "")
-.trim();
-}
+  if (
+    typeof normalizedValue === "string"
+  ) {
+    normalizedValue =
+      normalizedValue
+        .replace(/[$₹,\s%]/g, "")
+        .trim();
+  }
 
-const numericValue =
-Number(normalizedValue);
+  const numericValue =
+    Number(normalizedValue);
 
-if (
-!Number.isFinite(numericValue)
-) {
-throw createError(
-`${fieldName} must be a valid number`,
-400
-);
-}
+  if (
+    !Number.isFinite(numericValue)
+  ) {
+    throw createError(
+      `${fieldName} must be a valid number`,
+      400
+    );
+  }
 
-return numericValue;
+  return numericValue;
 }
 
 // =====================================================
@@ -568,17 +553,17 @@ return numericValue;
 // =====================================================
 
 function generateCardNumber() {
-const first = crypto.randomInt(
-1000,
-10000
-);
+  const first = crypto.randomInt(
+    1000,
+    10000
+  );
 
-const last = crypto.randomInt(
-1000,
-10000
-);
+  const last = crypto.randomInt(
+    1000,
+    10000
+  );
 
-return `${first} **** **** ${last}`;
+  return `${first} **** **** ${last}`;
 }
 
 // =====================================================
@@ -586,24 +571,24 @@ return `${first} **** **** ${last}`;
 // =====================================================
 
 function generateExpiry(validity) {
-const currentYear =
-new Date().getFullYear();
+  const currentYear =
+    new Date().getFullYear();
 
-let years = 5;
+  let years = 5;
 
-if (validity === "3 Years") {
-years = 3;
-} else if (
-validity === "5 Years"
-) {
-years = 5;
-} else if (
-validity === "7 Years"
-) {
-years = 7;
-}
+  if (validity === "3 Years") {
+    years = 3;
+  } else if (
+    validity === "5 Years"
+  ) {
+    years = 5;
+  } else if (
+    validity === "7 Years"
+  ) {
+    years = 7;
+  }
 
-return `12/${String(
+  return `12/${String(
     currentYear + years
   ).slice(-2)}`;
 }
@@ -613,12 +598,12 @@ return `12/${String(
 // =====================================================
 
 function requireUser(userId) {
-if (!userId) {
-throw createError(
-"User authentication required",
-401
-);
-}
+  if (!userId) {
+    throw createError(
+      "User authentication required",
+      401
+    );
+  }
 }
 
 // =====================================================
@@ -626,14 +611,14 @@ throw createError(
 // =====================================================
 
 function createError(
-message,
-statusCode
+  message,
+  statusCode
 ) {
-const error = new Error(message);
+  const error = new Error(message);
 
-error.statusCode = statusCode;
+  error.statusCode = statusCode;
 
-return error;
+  return error;
 }
 
 // =====================================================
@@ -641,11 +626,12 @@ return error;
 // =====================================================
 
 module.exports = {
-getUserCards,
-getCardById,
-createCard,
-updateCard,
-toggleFreezeCard,
-deleteCard,
-getCardSummary,
+  getUserCards,
+  getCardById,
+  createCard,
+  updateCard,
+  toggleFreezeCard,
+  deleteCard,
+  getCardSummary,
 };
+

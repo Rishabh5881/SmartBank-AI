@@ -1,0 +1,2 @@
+-- AlterTable
+ALTER TABLE "Card" ADD COLUMN     "balance" DECIMAL(65,30) NOT NULL DEFAULT 0;

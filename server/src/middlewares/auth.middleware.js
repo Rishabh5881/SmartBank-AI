@@ -1,3 +1,4 @@
+
 const prisma = require("../config/prisma");
 
 const {
@@ -56,7 +57,10 @@ async function authenticate(req, res, next) {
     try {
       decoded = verifyAccessToken(token);
     } catch (error) {
-      console.error("ACCESS TOKEN ERROR:", error.message);
+      console.error(
+        "ACCESS TOKEN ERROR:",
+        error.message
+      );
 
       return res.status(401).json({
         success: false,
@@ -86,10 +90,17 @@ async function authenticate(req, res, next) {
       where: {
         id: userId,
       },
+
       select: {
         id: true,
         name: true,
         email: true,
+
+        // IMPORTANT:
+        // Required for Admin / Employee / Customer
+        // role-based authorization.
+        role: true,
+
         createdAt: true,
         updatedAt: true,
       },
@@ -123,6 +134,45 @@ async function authenticate(req, res, next) {
   }
 }
 
+// =====================================
+// REQUIRE ADMIN
+// =====================================
+
+function requireAdmin(req, res, next) {
+  try {
+    if (!req.user) {
+      return res.status(401).json({
+        success: false,
+        message: "Authentication required",
+      });
+    }
+
+    const role = String(
+      req.user.role || ""
+    )
+      .trim()
+      .toUpperCase();
+
+    if (role !== "ADMIN") {
+      return res.status(403).json({
+        success: false,
+        message: "Admin access required",
+      });
+    }
+
+    next();
+  } catch (error) {
+    console.error(
+      "ADMIN AUTHORIZATION ERROR:",
+      error?.message || error
+    );
+
+    next(error);
+  }
+}
+
 module.exports = {
   authenticate,
+  requireAdmin,
 };
+
