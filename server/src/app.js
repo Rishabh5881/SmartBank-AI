@@ -1,3 +1,4 @@
+
 const express = require("express");
 const cors = require("cors");
 const cookieParser = require("cookie-parser");
@@ -19,6 +20,7 @@ const dashboardRoutes = require("./routes/dashboard.routes");
 const cardRoutes = require("./routes/card.routes");
 const goalRoutes = require("./routes/goal.routes");
 const loanRoutes = require("./routes/loan.routes");
+const notificationRoutes = require("./routes/notification.routes");
 
 // ADMIN ROUTES
 const adminRoutes = require("./routes/admin.routes");
@@ -244,6 +246,15 @@ app.use(
 );
 
 // =====================
+// NOTIFICATION ROUTES
+// =====================
+
+app.use(
+  "/api/notifications",
+  notificationRoutes
+);
+
+// =====================
 // ADMIN ROUTES
 // =====================
 //
@@ -296,3 +307,4 @@ app.use(errorMiddleware);
 // =====================
 
 module.exports = app;
+

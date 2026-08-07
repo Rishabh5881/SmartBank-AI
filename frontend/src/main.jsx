@@ -6,8 +6,9 @@ import { GoogleOAuthProvider } from "@react-oauth/google";
 
 import App from "./App";
 
-import "./styles/globals.css";
+import { NotificationProvider } from "./context/NotificationContext";
 
+import "./styles/globals.css";
 
 // ==========================================
 // GOOGLE CLIENT ID
@@ -16,7 +17,6 @@ import "./styles/globals.css";
 const GOOGLE_CLIENT_ID =
   import.meta.env.VITE_GOOGLE_CLIENT_ID;
 
-
 // ==========================================
 // ROOT RENDER
 // ==========================================
@@ -24,21 +24,15 @@ const GOOGLE_CLIENT_ID =
 ReactDOM.createRoot(
   document.getElementById("root")
 ).render(
-
   <React.StrictMode>
-
     <GoogleOAuthProvider
       clientId={GOOGLE_CLIENT_ID}
     >
-
       <BrowserRouter>
-
-        <App />
-
+        <NotificationProvider>
+          <App />
+        </NotificationProvider>
       </BrowserRouter>
-
     </GoogleOAuthProvider>
-
   </React.StrictMode>
-
 );

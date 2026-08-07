@@ -1,181 +1,123 @@
-import { createContext, useContext, useState } from "react";
+import {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useRef,
+  useState,
+} from "react";
 
+const NotificationContext = createContext(null);
 
-const NotificationContext = createContext();
+export const NotificationProvider = ({ children }) => {
+  const [toast, setToast] = useState(null);
 
+  const timerRef = useRef(null);
 
+  // ==========================================
+  // CLEAR TIMER
+  // ==========================================
 
-const defaultNotifications = [
+  const clearToastTimer = useCallback(() => {
+    if (timerRef.current) {
+      window.clearTimeout(timerRef.current);
+      timerRef.current = null;
+    }
+  }, []);
 
-{
-id:1,
-icon:"CreditCard",
-title:"Transaction Alert",
-message:"Your payment of $250 was successful.",
-time:"Today, 10:30 AM",
-type:"Transaction",
-read:false
-},
+  // ==========================================
+  // SHOW NOTIFICATION
+  // ==========================================
 
+  const showNotification = useCallback(
+    ({
+      title = "Notification",
+      message = "",
+      type = "success",
+      duration = 4500,
+    } = {}) => {
+      clearToastTimer();
 
-{
-id:2,
-icon:"Bell",
-title:"Loan Update",
-message:"Your Home Loan EMI is due tomorrow.",
-time:"Yesterday",
-type:"Loan",
-read:false
-},
+      const notification = {
+        id: Date.now(),
+        title,
+        message,
+        type,
+        duration,
+      };
 
+      setToast(notification);
 
-{
-id:3,
-icon:"ShieldCheck",
-title:"Security Alert",
-message:"New login detected from Chrome Windows.",
-time:"Today, 09:45 AM",
-type:"Security",
-read:false
-},
+      timerRef.current = window.setTimeout(() => {
+        setToast(null);
+        timerRef.current = null;
+      }, duration);
+    },
+    [clearToastTimer]
+  );
 
+  // ==========================================
+  // BACKWARD COMPATIBILITY
+  // ==========================================
 
-{
-id:4,
-icon:"Sparkles",
-title:"AI Financial Tip",
-message:"You can save $120/month by reducing unnecessary expenses.",
-time:"Today",
-type:"AI",
-read:true
-}
+  const addNotification = useCallback(
+    (notification) => {
+      showNotification(notification);
+    },
+    [showNotification]
+  );
 
-];
+  // ==========================================
+  // CLOSE
+  // ==========================================
 
+  const closeNotification = useCallback(() => {
+    clearToastTimer();
+    setToast(null);
+  }, [clearToastTimer]);
 
+  // ==========================================
+  // CLEANUP
+  // ==========================================
 
+  useEffect(() => {
+    return () => {
+      clearToastTimer();
+    };
+  }, [clearToastTimer]);
 
+  // ==========================================
+  // PROVIDER
+  // ==========================================
 
-export const NotificationProvider = ({children})=>{
-
-
-const [notifications,setNotifications] = useState(()=>{
-
-
-const saved = localStorage.getItem(
-"notifications"
-);
-
-
-
-return saved
-
-?
-
-JSON.parse(saved)
-
-:
-
-defaultNotifications;
-
-
-});
-
-
-
-
-
-
-
-const markAsRead = (id)=>{
-
-
-const updatedNotifications = notifications.map((item)=>
-
-item.id === id
-
-?
-
-{
-...item,
-read:true
-}
-
-:
-
-item
-
-);
-
-
-
-setNotifications(updatedNotifications);
-
-
-
-localStorage.setItem(
-
-"notifications",
-
-JSON.stringify(updatedNotifications)
-
-);
-
-
+  return (
+    <NotificationContext.Provider
+      value={{
+        toast,
+        showNotification,
+        addNotification,
+        closeNotification,
+      }}
+    >
+      {children}
+    </NotificationContext.Provider>
+  );
 };
 
+// ==========================================
+// HOOK
+// ==========================================
 
+export const useNotifications = () => {
+  const context = useContext(NotificationContext);
 
+  if (!context) {
+    throw new Error(
+      "useNotifications must be used inside NotificationProvider"
+    );
+  }
 
-
-
-
-const unreadCount = notifications.filter(
-
-(item)=>!item.read
-
-).length;
-
-
-
-
-
-return (
-
-<NotificationContext.Provider
-
-value={{
-
-notifications,
-
-markAsRead,
-
-unreadCount
-
-}}
-
->
-
-
-{children}
-
-
-</NotificationContext.Provider>
-
-
-);
-
-
+  return context;
 };
 
-
-
-
-
-export const useNotifications = ()=>{
-
-
-return useContext(NotificationContext);
-
-
-};
+export default NotificationContext;

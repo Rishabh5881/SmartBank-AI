@@ -5,6 +5,7 @@ import {
 } from "react-router-dom";
 
 import Navbar from "./components/layout/Navbar";
+import NotificationPopup from "./components/notifications/NotificationPopup";
 
 import Home from "./pages/Home";
 import Login from "./pages/Login";
@@ -32,8 +33,7 @@ import ProtectedRoute from "./components/auth/ProtectedRoute";
 
 const App = () => {
   return (
-    <div className="min-h-screen bg-[#020617]">
-
+    <>
       {/* ==========================================
           GLOBAL NAVBAR
       ========================================== */}
@@ -41,14 +41,21 @@ const App = () => {
       <Navbar />
 
       {/* ==========================================
+          GLOBAL NOTIFICATION POPUP
+          Mounted once, outside the route tree, so it
+          renders on top of every page immediately
+          (no navigation to /notifications required).
+      ========================================== */}
+
+      <NotificationPopup />
+
+      {/* ==========================================
           APPLICATION ROUTES
       ========================================== */}
 
       <Routes>
 
-        {/* ==========================================
-            PUBLIC ROUTES
-        ========================================== */}
+        {/* PUBLIC */}
 
         <Route
           path="/"
@@ -65,27 +72,21 @@ const App = () => {
           element={<Signup />}
         />
 
-        {/* ==========================================
-            FORGOT PASSWORD
-        ========================================== */}
+        {/* FORGOT PASSWORD */}
 
         <Route
           path="/forgot-password"
           element={<ForgotPassword />}
         />
 
-        {/* ==========================================
-            RESET PASSWORD
-        ========================================== */}
+        {/* RESET PASSWORD */}
 
         <Route
           path="/reset-password/:token"
           element={<ResetPassword />}
         />
 
-        {/* ==========================================
-            CUSTOMER DASHBOARD
-        ========================================== */}
+        {/* DASHBOARD */}
 
         <Route
           path="/dashboard"
@@ -96,9 +97,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            PROFILE
-        ========================================== */}
+        {/* PROFILE */}
 
         <Route
           path="/profile"
@@ -109,9 +108,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            NOTIFICATIONS
-        ========================================== */}
+        {/* NOTIFICATIONS */}
 
         <Route
           path="/notifications"
@@ -122,9 +119,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            ACCOUNTS
-        ========================================== */}
+        {/* ACCOUNTS */}
 
         <Route
           path="/accounts"
@@ -135,9 +130,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            TRANSACTIONS
-        ========================================== */}
+        {/* TRANSACTIONS */}
 
         <Route
           path="/transactions"
@@ -148,9 +141,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            TRANSFERS
-        ========================================== */}
+        {/* TRANSFERS */}
 
         <Route
           path="/transfers"
@@ -161,9 +152,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            CARDS
-        ========================================== */}
+        {/* CARDS */}
 
         <Route
           path="/cards"
@@ -174,9 +163,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            LOANS
-        ========================================== */}
+        {/* LOANS */}
 
         <Route
           path="/loans"
@@ -187,9 +174,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            EMPLOYEE DASHBOARD
-        ========================================== */}
+        {/* EMPLOYEE */}
 
         <Route
           path="/employee"
@@ -200,9 +185,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            ADMIN DASHBOARD
-        ========================================== */}
+        {/* ADMIN */}
 
         <Route
           path="/admin"
@@ -213,9 +196,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            ADMIN LOANS
-        ========================================== */}
+        {/* ADMIN LOANS */}
 
         <Route
           path="/admin/loans"
@@ -226,9 +207,7 @@ const App = () => {
           }
         />
 
-        {/* ==========================================
-            FALLBACK
-        ========================================== */}
+        {/* FALLBACK */}
 
         <Route
           path="*"
@@ -241,7 +220,7 @@ const App = () => {
         />
 
       </Routes>
-    </div>
+    </>
   );
 };
 

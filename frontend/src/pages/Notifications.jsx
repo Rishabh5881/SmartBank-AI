@@ -1,4 +1,10 @@
-import { useMemo, useState } from "react";
+import {
+  useCallback,
+  useEffect,
+  useMemo,
+  useState,
+} from "react";
+
 import { motion, AnimatePresence } from "framer-motion";
 
 import {
@@ -11,50 +17,34 @@ import {
   Filter,
   ArrowUpRight,
   CheckCircle2,
+  RefreshCw,
+  Trash2,
 } from "lucide-react";
 
+import api from "../services/api";
+
 const Notifications = () => {
+  // ==========================================
+  // STATE
+  // ==========================================
+
   const [activeFilter, setActiveFilter] = useState("All");
 
-  const [notifications, setNotifications] = useState([
-    {
-      id: 1,
-      icon: CreditCard,
-      title: "Transaction Alert",
-      message: "Your payment of ₹250 was successful.",
-      time: "Today, 10:30 AM",
-      type: "Transaction",
-      read: false,
-    },
-    {
-      id: 2,
-      icon: Bell,
-      title: "Loan Update",
-      message: "Your Home Loan EMI is due tomorrow.",
-      time: "Yesterday",
-      type: "Loan",
-      read: false,
-    },
-    {
-      id: 3,
-      icon: ShieldCheck,
-      title: "Security Alert",
-      message: "New login detected from Chrome on Windows.",
-      time: "Today, 09:45 AM",
-      type: "Security",
-      read: false,
-    },
-    {
-      id: 4,
-      icon: Sparkles,
-      title: "AI Financial Tip",
-      message:
-        "You can save ₹120/month by reducing unnecessary expenses.",
-      time: "Today",
-      type: "AI",
-      read: true,
-    },
-  ]);
+  const [notifications, setNotifications] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+
+  const [error, setError] = useState("");
+
+  const [markingAll, setMarkingAll] = useState(false);
+
+  const [markingId, setMarkingId] = useState(null);
+
+  const [deletingId, setDeletingId] = useState(null);
+
+  // ==========================================
+  // FILTERS
+  // ==========================================
 
   const filters = [
     "All",
@@ -64,10 +54,136 @@ const Notifications = () => {
     "AI",
   ];
 
+  // ==========================================
+  // NORMALIZE NOTIFICATION
+  // ==========================================
+
+  const normalizeNotification = (item) => {
+    const type = String(
+      item?.type ||
+        item?.category ||
+        item?.notificationType ||
+        "General"
+    );
+
+    const normalizedType =
+      type.toLowerCase() === "transaction"
+        ? "Transaction"
+        : type.toLowerCase() === "loan"
+        ? "Loan"
+        : type.toLowerCase() === "security"
+        ? "Security"
+        : type.toLowerCase() === "ai"
+        ? "AI"
+        : "General";
+
+    return {
+      id: item.id,
+
+      title:
+        item.title ||
+        item.subject ||
+        "Notification",
+
+      message:
+        item.message ||
+        item.description ||
+        "You have a new notification.",
+
+      type: normalizedType,
+
+      read:
+        item.read === true ||
+        item.isRead === true ||
+        item.status === "READ",
+
+      createdAt:
+        item.createdAt ||
+        item.timestamp ||
+        item.date ||
+        null,
+    };
+  };
+
+  // ==========================================
+  // FETCH NOTIFICATIONS
+  // ==========================================
+
+  const fetchNotifications = useCallback(
+    async () => {
+      try {
+        setLoading(true);
+        setError("");
+
+        const response =
+          await api.get("/notifications");
+
+        const responseData =
+          response?.data?.data;
+
+        let notificationList = [];
+
+        if (Array.isArray(responseData)) {
+          notificationList = responseData;
+        } else if (
+          Array.isArray(responseData?.notifications)
+        ) {
+          notificationList =
+            responseData.notifications;
+        } else if (
+          Array.isArray(response?.data?.notifications)
+        ) {
+          notificationList =
+            response.data.notifications;
+        }
+
+        setNotifications(
+          notificationList.map(
+            normalizeNotification
+          )
+        );
+      } catch (err) {
+        console.error(
+          "Notifications fetch error:",
+          err
+        );
+
+        setError(
+          err?.response?.data?.message ||
+            "Unable to load notifications."
+        );
+
+        setNotifications([]);
+      } finally {
+        setLoading(false);
+      }
+    },
+    []
+  );
+
+  // ==========================================
+  // INITIAL FETCH
+  // ==========================================
+
+  useEffect(() => {
+    fetchNotifications();
+  }, [fetchNotifications]);
+
+  // ==========================================
+  // UNREAD COUNT
+  // ==========================================
+
   const unreadCount = useMemo(
-    () => notifications.filter((item) => !item.read).length,
+    () =>
+      notifications.filter(
+        (item) => !item.read
+      ).length,
     [notifications]
   );
+
+  // ==========================================
+  // FILTERED NOTIFICATIONS
+  // ==========================================
 
   const filteredNotifications = useMemo(() => {
     if (activeFilter === "All") {
@@ -77,29 +193,187 @@ const Notifications = () => {
     return notifications.filter(
       (item) => item.type === activeFilter
     );
-  }, [activeFilter, notifications]);
+  }, [
+    activeFilter,
+    notifications,
+  ]);
 
-  const markAsRead = (id) => {
-    setNotifications((current) =>
-      current.map((item) =>
-        item.id === id
-          ? {
-              ...item,
-              read: true,
-            }
-          : item
-      )
-    );
+  // ==========================================
+  // FORMAT TIME
+  // ==========================================
+
+  const formatTime = (dateValue) => {
+    if (!dateValue) {
+      return "Recently";
+    }
+
+    const date = new Date(dateValue);
+
+    if (Number.isNaN(date.getTime())) {
+      return "Recently";
+    }
+
+    return date.toLocaleString("en-IN", {
+      dateStyle: "medium",
+      timeStyle: "short",
+    });
   };
 
-  const markAllAsRead = () => {
-    setNotifications((current) =>
-      current.map((item) => ({
-        ...item,
-        read: true,
-      }))
-    );
+  // ==========================================
+  // MARK SINGLE AS READ
+  // ==========================================
+
+  const markAsRead = async (id) => {
+    const notification =
+      notifications.find(
+        (item) => item.id === id
+      );
+
+    if (!notification || notification.read) {
+      return;
+    }
+
+    if (deletingId === id) {
+      return;
+    }
+
+    try {
+      setMarkingId(id);
+      setError("");
+
+      await api.patch(
+        `/notifications/${id}/read`
+      );
+
+      setNotifications((current) =>
+        current.map((item) =>
+          item.id === id
+            ? {
+                ...item,
+                read: true,
+              }
+            : item
+        )
+      );
+    } catch (err) {
+      console.error(
+        "Mark notification as read error:",
+        err
+      );
+
+      setError(
+        err?.response?.data?.message ||
+          "Unable to mark notification as read."
+      );
+    } finally {
+      setMarkingId(null);
+    }
   };
+
+  // ==========================================
+  // MARK ALL AS READ
+  // ==========================================
+
+  const markAllAsRead = async () => {
+    if (unreadCount === 0 || markingAll) {
+      return;
+    }
+
+    try {
+      setMarkingAll(true);
+      setError("");
+
+      await api.patch(
+        "/notifications/read-all"
+      );
+
+      setNotifications((current) =>
+        current.map((item) => ({
+          ...item,
+          read: true,
+        }))
+      );
+    } catch (err) {
+      console.error(
+        "Mark all notifications as read error:",
+        err
+      );
+
+      setError(
+        err?.response?.data?.message ||
+          "Unable to mark all notifications as read."
+      );
+    } finally {
+      setMarkingAll(false);
+    }
+  };
+
+  // ==========================================
+  // DELETE / DISMISS NOTIFICATION
+  // ==========================================
+
+  const deleteNotification = async (id) => {
+    if (
+      deletingId === id ||
+      markingId === id
+    ) {
+      return;
+    }
+
+    try {
+      setDeletingId(id);
+      setError("");
+
+      await api.delete(
+        `/notifications/${id}`
+      );
+
+      setNotifications((current) =>
+        current.filter(
+          (item) => item.id !== id
+        )
+      );
+    } catch (err) {
+      console.error(
+        "Delete notification error:",
+        err
+      );
+
+      setError(
+        err?.response?.data?.message ||
+          "Unable to delete notification."
+      );
+    } finally {
+      setDeletingId(null);
+    }
+  };
+
+  // ==========================================
+  // TYPE ICON
+  // ==========================================
+
+  const getTypeIcon = (type) => {
+    switch (type) {
+      case "Transaction":
+        return CreditCard;
+
+      case "Loan":
+        return Bell;
+
+      case "Security":
+        return ShieldCheck;
+
+      case "AI":
+        return Sparkles;
+
+      default:
+        return Bell;
+    }
+  };
+
+  // ==========================================
+  // TYPE STYLES
+  // ==========================================
 
   const getTypeStyles = (type) => {
     switch (type) {
@@ -145,9 +419,15 @@ const Notifications = () => {
     }
   };
 
+  // ==========================================
+  // RENDER
+  // ==========================================
+
   return (
     <div className="min-h-screen bg-slate-950 px-4 py-6 text-white sm:px-6 lg:px-8">
-      {/* Background Effects */}
+      {/* ======================================
+          BACKGROUND
+      ====================================== */}
 
       <div className="pointer-events-none fixed inset-0 overflow-hidden">
         <div className="absolute -right-40 -top-40 h-96 w-96 rounded-full bg-blue-600/[0.07] blur-[120px]" />
@@ -156,9 +436,9 @@ const Notifications = () => {
       </div>
 
       <div className="relative mx-auto max-w-6xl">
-        {/* =========================================
+        {/* ======================================
             HEADER
-        ========================================= */}
+        ====================================== */}
 
         <motion.div
           initial={{
@@ -229,25 +509,26 @@ const Notifications = () => {
                     Notifications
                   </h1>
 
-                  {unreadCount > 0 && (
-                    <span
-                      className="
-                        rounded-full
-                        border
-                        border-cyan-400/15
-                        bg-cyan-400/[0.08]
-                        px-2.5
-                        py-1
-                        text-[10px]
-                        font-bold
-                        uppercase
-                        tracking-wider
-                        text-cyan-300
-                      "
-                    >
-                      {unreadCount} unread
-                    </span>
-                  )}
+                  {!loading &&
+                    unreadCount > 0 && (
+                      <span
+                        className="
+                          rounded-full
+                          border
+                          border-cyan-400/15
+                          bg-cyan-400/[0.08]
+                          px-2.5
+                          py-1
+                          text-[10px]
+                          font-bold
+                          uppercase
+                          tracking-wider
+                          text-cyan-300
+                        "
+                      >
+                        {unreadCount} unread
+                      </span>
+                    )}
                 </div>
 
                 <p
@@ -259,49 +540,97 @@ const Notifications = () => {
                     text-slate-500
                   "
                 >
-                  Stay updated with your banking activities,
-                  security alerts, and AI-powered financial
+                  Stay updated with your banking
+                  activities, security alerts, and
+                  AI-powered financial
                   recommendations.
                 </p>
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={markAllAsRead}
-              disabled={unreadCount === 0}
-              className="
-                flex
-                w-full
-                items-center
-                justify-center
-                gap-2
-                rounded-xl
-                border
-                border-white/[0.08]
-                bg-white/[0.04]
-                px-4
-                py-2.5
-                text-xs
-                font-semibold
-                text-slate-400
-                transition-all
-                duration-300
-                hover:border-cyan-400/20
-                hover:bg-cyan-400/[0.06]
-                hover:text-cyan-400
-                disabled:cursor-not-allowed
-                disabled:opacity-40
-                sm:w-fit
-              "
-            >
-              <CheckCheck size={15} />
+            <div className="flex w-full gap-2 sm:w-fit">
+              <button
+                type="button"
+                onClick={fetchNotifications}
+                disabled={loading}
+                className="
+                  flex
+                  items-center
+                  justify-center
+                  gap-2
+                  rounded-xl
+                  border
+                  border-white/[0.08]
+                  bg-white/[0.04]
+                  px-4
+                  py-2.5
+                  text-xs
+                  font-semibold
+                  text-slate-400
+                  transition-all
+                  duration-300
+                  hover:border-cyan-400/20
+                  hover:bg-cyan-400/[0.06]
+                  hover:text-cyan-400
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
+              >
+                <RefreshCw
+                  size={14}
+                  className={
+                    loading
+                      ? "animate-spin"
+                      : ""
+                  }
+                />
 
-              Mark all as read
-            </button>
+                Refresh
+              </button>
+
+              <button
+                type="button"
+                onClick={markAllAsRead}
+                disabled={
+                  unreadCount === 0 ||
+                  markingAll ||
+                  loading
+                }
+                className="
+                  flex
+                  items-center
+                  justify-center
+                  gap-2
+                  rounded-xl
+                  border
+                  border-white/[0.08]
+                  bg-white/[0.04]
+                  px-4
+                  py-2.5
+                  text-xs
+                  font-semibold
+                  text-slate-400
+                  transition-all
+                  duration-300
+                  hover:border-cyan-400/20
+                  hover:bg-cyan-400/[0.06]
+                  hover:text-cyan-400
+                  disabled:cursor-not-allowed
+                  disabled:opacity-40
+                "
+              >
+                <CheckCheck size={15} />
+
+                {markingAll
+                  ? "Updating..."
+                  : "Mark all as read"}
+              </button>
+            </div>
           </div>
 
-          {/* Stats */}
+          {/* ======================================
+              STATS
+          ====================================== */}
 
           <div className="relative mt-7 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <div className="rounded-2xl border border-white/[0.06] bg-white/[0.025] p-4">
@@ -310,7 +639,9 @@ const Notifications = () => {
               </p>
 
               <p className="mt-1 text-xl font-bold text-white">
-                {notifications.length}
+                {loading
+                  ? "—"
+                  : notifications.length}
               </p>
             </div>
 
@@ -320,7 +651,9 @@ const Notifications = () => {
               </p>
 
               <p className="mt-1 text-xl font-bold text-cyan-300">
-                {unreadCount}
+                {loading
+                  ? "—"
+                  : unreadCount}
               </p>
             </div>
 
@@ -330,7 +663,10 @@ const Notifications = () => {
               </p>
 
               <p className="mt-1 text-xl font-bold text-emerald-300">
-                {notifications.length - unreadCount}
+                {loading
+                  ? "—"
+                  : notifications.length -
+                    unreadCount}
               </p>
             </div>
 
@@ -340,19 +676,76 @@ const Notifications = () => {
               </p>
 
               <p className="mt-1 text-xl font-bold text-purple-300">
-                {
-                  notifications.filter(
-                    (item) => item.type === "AI"
-                  ).length
-                }
+                {loading
+                  ? "—"
+                  : notifications.filter(
+                      (item) =>
+                        item.type === "AI"
+                    ).length}
               </p>
             </div>
           </div>
         </motion.div>
 
-        {/* =========================================
+        {/* ======================================
+            ERROR
+        ====================================== */}
+
+        {error && (
+          <motion.div
+            initial={{
+              opacity: 0,
+              y: 10,
+            }}
+            animate={{
+              opacity: 1,
+              y: 0,
+            }}
+            className="
+              mt-4
+              flex
+              items-center
+              justify-between
+              gap-4
+              rounded-2xl
+              border
+              border-red-400/10
+              bg-red-400/[0.04]
+              px-4
+              py-3
+            "
+          >
+            <p className="text-xs text-red-300">
+              {error}
+            </p>
+
+            <button
+              type="button"
+              onClick={() => {
+                setError("");
+                fetchNotifications();
+              }}
+              className="
+                shrink-0
+                rounded-lg
+                border
+                border-red-400/10
+                px-3
+                py-1.5
+                text-[10px]
+                font-semibold
+                text-red-300
+                hover:bg-red-400/[0.06]
+              "
+            >
+              Retry
+            </button>
+          </motion.div>
+        )}
+
+        {/* ======================================
             FILTER BAR
-        ========================================= */}
+        ====================================== */}
 
         <motion.div
           initial={{
@@ -431,312 +824,437 @@ const Notifications = () => {
           </div>
         </motion.div>
 
-        {/* =========================================
+        {/* ======================================
             NOTIFICATION LIST
-        ========================================= */}
+        ====================================== */}
 
         <div className="mt-6 space-y-3">
-          <AnimatePresence mode="popLayout">
-            {filteredNotifications.map(
-              (item, index) => {
-                const Icon = item.icon;
-                const styles =
-                  getTypeStyles(item.type);
+          {/* ====================================
+              LOADING STATE
+          ==================================== */}
 
-                return (
-                  <motion.div
-                    key={item.id}
-                    layout
-                    initial={{
-                      opacity: 0,
-                      y: 15,
-                    }}
-                    animate={{
-                      opacity: 1,
-                      y: 0,
-                    }}
-                    exit={{
-                      opacity: 0,
-                      scale: 0.97,
-                    }}
-                    transition={{
-                      delay: index * 0.05,
-                      duration: 0.35,
-                    }}
-                    whileHover={{
-                      y: -2,
-                    }}
-                    onClick={() =>
-                      markAsRead(item.id)
-                    }
-                    className={`
-                      group
-                      relative
-                      cursor-pointer
-                      overflow-hidden
-                      rounded-[24px]
-                      border
-                      p-4
-                      shadow-xl
-                      backdrop-blur-xl
-                      transition-all
-                      duration-300
-                      sm:p-5
-                      ${
-                        item.read
-                          ? "border-white/[0.07] bg-white/[0.025] hover:border-white/[0.12] hover:bg-white/[0.04]"
-                          : "border-cyan-400/[0.12] bg-cyan-400/[0.035] hover:border-cyan-400/20 hover:bg-cyan-400/[0.05]"
+          {loading &&
+            Array.from({ length: 4 }).map(
+              (_, index) => (
+                <motion.div
+                  key={index}
+                  initial={{
+                    opacity: 0,
+                  }}
+                  animate={{
+                    opacity: 1,
+                  }}
+                  className="
+                    animate-pulse
+                    rounded-[24px]
+                    border
+                    border-white/[0.06]
+                    bg-white/[0.025]
+                    p-5
+                  "
+                >
+                  <div className="flex gap-4">
+                    <div className="h-12 w-12 shrink-0 rounded-2xl bg-white/[0.06]" />
+
+                    <div className="flex-1">
+                      <div className="h-4 w-40 rounded bg-white/[0.06]" />
+
+                      <div className="mt-3 h-3 w-3/4 rounded bg-white/[0.04]" />
+
+                      <div className="mt-4 h-3 w-32 rounded bg-white/[0.04]" />
+                    </div>
+                  </div>
+                </motion.div>
+              )
+            )}
+
+          {/* ====================================
+              LOADED LIST
+          ==================================== */}
+
+          {!loading && (
+            <AnimatePresence mode="popLayout">
+              {filteredNotifications.map(
+                (item, index) => {
+                  const Icon =
+                    getTypeIcon(item.type);
+
+                  const styles =
+                    getTypeStyles(item.type);
+
+                  const isMarking =
+                    markingId === item.id;
+
+                  const isDeleting =
+                    deletingId === item.id;
+
+                  const isBusy =
+                    isMarking || isDeleting;
+
+                  return (
+                    <motion.div
+                      key={item.id}
+                      layout
+                      initial={{
+                        opacity: 0,
+                        y: 15,
+                      }}
+                      animate={{
+                        opacity: 1,
+                        y: 0,
+                      }}
+                      exit={{
+                        opacity: 0,
+                        scale: 0.97,
+                      }}
+                      transition={{
+                        delay: index * 0.05,
+                        duration: 0.35,
+                      }}
+                      whileHover={{
+                        y: -2,
+                      }}
+                      onClick={() =>
+                        !isBusy &&
+                        markAsRead(item.id)
                       }
-                    `}
-                  >
-                    {!item.read && (
-                      <div className="absolute left-0 top-0 h-full w-0.5 bg-cyan-400 shadow-lg shadow-cyan-400/50" />
-                    )}
+                      className={`
+                        group
+                        relative
+                        overflow-hidden
+                        rounded-[24px]
+                        border
+                        p-4
+                        shadow-xl
+                        backdrop-blur-xl
+                        transition-all
+                        duration-300
+                        sm:p-5
+                        ${
+                          item.read
+                            ? "border-white/[0.07] bg-white/[0.025] hover:border-white/[0.12] hover:bg-white/[0.04]"
+                            : "border-cyan-400/[0.12] bg-cyan-400/[0.035] hover:border-cyan-400/20 hover:bg-cyan-400/[0.05]"
+                        }
+                      `}
+                    >
+                      {!item.read && (
+                        <div className="absolute left-0 top-0 h-full w-0.5 bg-cyan-400 shadow-lg shadow-cyan-400/50" />
+                      )}
 
-                    <div className="flex items-start gap-4">
-                      {/* ICON */}
+                      <div className="flex items-start gap-4">
+                        {/* ICON */}
 
-                      <div
-                        className={`
-                          flex
-                          h-12
-                          w-12
-                          shrink-0
-                          items-center
-                          justify-center
-                          rounded-2xl
-                          border
-                          transition-transform
-                          duration-300
-                          group-hover:scale-105
-                          ${styles.icon}
-                        `}
-                      >
-                        <Icon
-                          size={20}
-                          strokeWidth={1.8}
-                        />
-                      </div>
+                        <div
+                          className={`
+                            flex
+                            h-12
+                            w-12
+                            shrink-0
+                            items-center
+                            justify-center
+                            rounded-2xl
+                            border
+                            transition-transform
+                            duration-300
+                            group-hover:scale-105
+                            ${styles.icon}
+                          `}
+                        >
+                          {isDeleting ? (
+                            <RefreshCw
+                              size={20}
+                              className="animate-spin"
+                            />
+                          ) : isMarking ? (
+                            <RefreshCw
+                              size={20}
+                              className="animate-spin"
+                            />
+                          ) : (
+                            <Icon
+                              size={20}
+                              strokeWidth={1.8}
+                            />
+                          )}
+                        </div>
 
-                      {/* CONTENT */}
+                        {/* CONTENT */}
 
-                      <div className="min-w-0 flex-1">
-                        <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
-                          <div className="min-w-0">
-                            <div className="flex flex-wrap items-center gap-2">
-                              <h2
-                                className="
-                                  text-sm
-                                  font-bold
-                                  text-white
-                                  sm:text-base
-                                "
-                              >
-                                {item.title}
-                              </h2>
-
-                              {!item.read && (
-                                <span
+                        <div className="min-w-0 flex-1">
+                          <div className="flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+                            <div className="min-w-0">
+                              <div className="flex flex-wrap items-center gap-2">
+                                <h2
                                   className="
-                                    flex
-                                    items-center
-                                    gap-1.5
-                                    rounded-full
-                                    border
-                                    border-cyan-400/10
-                                    bg-cyan-400/[0.08]
-                                    px-2
-                                    py-0.5
-                                    text-[8px]
+                                    text-sm
                                     font-bold
-                                    uppercase
-                                    tracking-wider
-                                    text-cyan-300
+                                    text-white
+                                    sm:text-base
                                   "
                                 >
-                                  <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+                                  {item.title}
+                                </h2>
 
-                                  New
-                                </span>
+                                {!item.read && (
+                                  <span
+                                    className="
+                                      flex
+                                      items-center
+                                      gap-1.5
+                                      rounded-full
+                                      border
+                                      border-cyan-400/10
+                                      bg-cyan-400/[0.08]
+                                      px-2
+                                      py-0.5
+                                      text-[8px]
+                                      font-bold
+                                      uppercase
+                                      tracking-wider
+                                      text-cyan-300
+                                    "
+                                  >
+                                    <span className="h-1.5 w-1.5 rounded-full bg-cyan-400" />
+
+                                    New
+                                  </span>
+                                )}
+                              </div>
+
+                              <p
+                                className="
+                                  mt-1.5
+                                  text-xs
+                                  leading-5
+                                  text-slate-500
+                                  sm:text-sm
+                                "
+                              >
+                                {item.message}
+                              </p>
+                            </div>
+
+                            <span
+                              className={`
+                                w-fit
+                                shrink-0
+                                rounded-full
+                                border
+                                px-2.5
+                                py-1
+                                text-[8px]
+                                font-bold
+                                uppercase
+                                tracking-wider
+                                ${styles.badge}
+                              `}
+                            >
+                              {item.type}
+                            </span>
+                          </div>
+
+                          {/* META */}
+
+                          <div className="mt-3 flex flex-wrap items-center gap-3">
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
+                              <Clock3 size={11} />
+
+                              {formatTime(
+                                item.createdAt
                               )}
                             </div>
 
-                            <p
+                            <span className="h-1 w-1 rounded-full bg-slate-700" />
+
+                            <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
+                              <CheckCircle2 size={11} />
+
+                              {item.read
+                                ? "Read"
+                                : "Unread"}
+                            </div>
+                          </div>
+                        </div>
+
+                        {/* ACTIONS */}
+
+                        <div className="flex shrink-0 items-center gap-2">
+                          {/* DELETE */}
+
+                          <button
+                            type="button"
+                            title="Delete notification"
+                            aria-label={`Delete ${item.title}`}
+                            disabled={isBusy}
+                            onClick={(event) => {
+                              event.stopPropagation();
+
+                              deleteNotification(
+                                item.id
+                              );
+                            }}
+                            className="
+                              flex
+                              h-9
+                              w-9
+                              items-center
+                              justify-center
+                              rounded-xl
+                              border
+                              border-white/[0.06]
+                              bg-white/[0.025]
+                              text-slate-600
+                              transition-all
+                              duration-300
+                              hover:border-red-400/20
+                              hover:bg-red-400/[0.06]
+                              hover:text-red-400
+                              disabled:cursor-not-allowed
+                              disabled:opacity-40
+                            "
+                          >
+                            {isDeleting ? (
+                              <RefreshCw
+                                size={14}
+                                className="animate-spin"
+                              />
+                            ) : (
+                              <Trash2
+                                size={14}
+                              />
+                            )}
+                          </button>
+
+                          {/* OPEN INDICATOR */}
+
+                          <div className="hidden sm:flex">
+                            <div
                               className="
-                                mt-1.5
-                                text-xs
-                                leading-5
-                                text-slate-500
-                                sm:text-sm
+                                flex
+                                h-9
+                                w-9
+                                items-center
+                                justify-center
+                                rounded-xl
+                                border
+                                border-white/[0.06]
+                                bg-white/[0.025]
+                                text-slate-600
+                                transition-all
+                                duration-300
+                                group-hover:border-cyan-400/15
+                                group-hover:bg-cyan-400/[0.06]
+                                group-hover:text-cyan-400
                               "
                             >
-                              {item.message}
-                            </p>
-                          </div>
-
-                          <span
-                            className={`
-                              w-fit
-                              shrink-0
-                              rounded-full
-                              border
-                              px-2.5
-                              py-1
-                              text-[8px]
-                              font-bold
-                              uppercase
-                              tracking-wider
-                              ${styles.badge}
-                            `}
-                          >
-                            {item.type}
-                          </span>
-                        </div>
-
-                        {/* META */}
-
-                        <div className="mt-3 flex flex-wrap items-center gap-3">
-                          <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
-                            <Clock3 size={11} />
-
-                            {item.time}
-                          </div>
-
-                          <span className="h-1 w-1 rounded-full bg-slate-700" />
-
-                          <div className="flex items-center gap-1.5 text-[10px] text-slate-600">
-                            <CheckCircle2 size={11} />
-
-                            {item.read
-                              ? "Read"
-                              : "Unread"}
+                              <ArrowUpRight
+                                size={15}
+                                className="
+                                  transition-transform
+                                  duration-300
+                                  group-hover:-translate-y-0.5
+                                  group-hover:translate-x-0.5
+                                "
+                              />
+                            </div>
                           </div>
                         </div>
                       </div>
-
-                      {/* ACTION */}
-
-                      <div className="hidden shrink-0 items-center justify-center sm:flex">
-                        <div
-                          className="
-                            flex
-                            h-9
-                            w-9
-                            items-center
-                            justify-center
-                            rounded-xl
-                            border
-                            border-white/[0.06]
-                            bg-white/[0.025]
-                            text-slate-600
-                            transition-all
-                            duration-300
-                            group-hover:border-cyan-400/15
-                            group-hover:bg-cyan-400/[0.06]
-                            group-hover:text-cyan-400
-                          "
-                        >
-                          <ArrowUpRight
-                            size={15}
-                            className="
-                              transition-transform
-                              duration-300
-                              group-hover:-translate-y-0.5
-                              group-hover:translate-x-0.5
-                            "
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  </motion.div>
-                );
-              }
-            )}
-          </AnimatePresence>
-
-          {/* =========================================
-              EMPTY STATE
-          ========================================= */}
-
-          {filteredNotifications.length === 0 && (
-            <motion.div
-              initial={{
-                opacity: 0,
-                y: 10,
-              }}
-              animate={{
-                opacity: 1,
-                y: 0,
-              }}
-              className="
-                rounded-[28px]
-                border
-                border-dashed
-                border-white/[0.08]
-                bg-white/[0.025]
-                px-6
-                py-16
-                text-center
-              "
-            >
-              <div
-                className="
-                  mx-auto
-                  flex
-                  h-16
-                  w-16
-                  items-center
-                  justify-center
-                  rounded-2xl
-                  border
-                  border-cyan-400/10
-                  bg-cyan-400/[0.06]
-                  text-cyan-400
-                "
-              >
-                <Bell size={26} />
-              </div>
-
-              <h3 className="mt-5 text-base font-bold text-white">
-                No notifications found
-              </h3>
-
-              <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-slate-500">
-                There are no notifications available
-                for the selected category.
-              </p>
-
-              <button
-                type="button"
-                onClick={() =>
-                  setActiveFilter("All")
+                    </motion.div>
+                  );
                 }
+              )}
+            </AnimatePresence>
+          )}
+
+          {/* ====================================
+              EMPTY STATE
+          ==================================== */}
+
+          {!loading &&
+            filteredNotifications.length ===
+              0 && (
+              <motion.div
+                initial={{
+                  opacity: 0,
+                  y: 10,
+                }}
+                animate={{
+                  opacity: 1,
+                  y: 0,
+                }}
                 className="
-                  mt-5
-                  rounded-xl
+                  rounded-[28px]
                   border
+                  border-dashed
                   border-white/[0.08]
-                  bg-white/[0.04]
-                  px-4
-                  py-2.5
-                  text-xs
-                  font-semibold
-                  text-slate-400
-                  transition
-                  hover:border-cyan-400/20
-                  hover:bg-cyan-400/[0.06]
-                  hover:text-cyan-400
+                  bg-white/[0.025]
+                  px-6
+                  py-16
+                  text-center
                 "
               >
-                View all notifications
-              </button>
-            </motion.div>
-          )}
+                <div
+                  className="
+                    mx-auto
+                    flex
+                    h-16
+                    w-16
+                    items-center
+                    justify-center
+                    rounded-2xl
+                    border
+                    border-cyan-400/10
+                    bg-cyan-400/[0.06]
+                    text-cyan-400
+                  "
+                >
+                  <Bell size={26} />
+                </div>
+
+                <h3 className="mt-5 text-base font-bold text-white">
+                  No notifications found
+                </h3>
+
+                <p className="mx-auto mt-2 max-w-sm text-xs leading-5 text-slate-500">
+                  {activeFilter === "All"
+                    ? "You don't have any notifications yet."
+                    : `There are no ${activeFilter.toLowerCase()} notifications available.`}
+                </p>
+
+                {activeFilter !== "All" && (
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setActiveFilter("All")
+                    }
+                    className="
+                      mt-5
+                      rounded-xl
+                      border
+                      border-white/[0.08]
+                      bg-white/[0.04]
+                      px-4
+                      py-2.5
+                      text-xs
+                      font-semibold
+                      text-slate-400
+                      transition
+                      hover:border-cyan-400/20
+                      hover:bg-cyan-400/[0.06]
+                      hover:text-cyan-400
+                    "
+                  >
+                    View all notifications
+                  </button>
+                )}
+              </motion.div>
+            )}
         </div>
 
-        {/* =========================================
+        {/* ======================================
             SECURITY FOOTER
-        ========================================= */}
+        ====================================== */}
 
         <motion.div
           initial={{

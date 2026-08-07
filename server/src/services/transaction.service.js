@@ -1,4 +1,3 @@
-
 const prisma = require("../config/prisma");
 const ApiError = require("../utils/ApiError");
 
@@ -91,6 +90,20 @@ async function deposit(userId, data) {
         },
       });
 
+      // =====================
+      // 6.6.2 DEPOSIT NOTIFICATION
+      // =====================
+
+      await tx.notification.create({
+        data: {
+          userId,
+          title: "Deposit Successful",
+          message: `₹${validAmount} has been deposited into your account.`,
+          type: "TRANSACTION",
+          read: false,
+        },
+      });
+
       return updatedAccount;
     }
   );
@@ -171,10 +184,25 @@ async function withdraw(userId, data) {
         },
       });
 
+      // =====================
+      // 6.6.2 WITHDRAW NOTIFICATION
+      // =====================
+
+      await tx.notification.create({
+        data: {
+          userId,
+          title: "Withdrawal Successful",
+          message: `₹${validAmount} has been withdrawn from your account.`,
+          type: "TRANSACTION",
+          read: false,
+        },
+      });
+
       return updatedAccount;
     }
   );
 }
+
 
 // =====================
 // TRANSFER
@@ -202,13 +230,21 @@ async function transfer(userId, data) {
   const validAmount =
     assertValidAmount(amount);
 
-  if (
-    fromAccountId === toAccountId
-  ) {
+  if (!fromAccountId || !toAccountId) {
+    throw ApiError.badRequest(
+      "Sender and receiver account are required"
+    );
+  }
+
+  if (fromAccountId === toAccountId) {
     throw ApiError.badRequest(
       "Cannot transfer to the same account"
     );
   }
+
+  // =====================
+  // FIND SENDER ACCOUNT
+  // =====================
 
   const sender =
     await prisma.account.findFirst({
@@ -224,6 +260,10 @@ async function transfer(userId, data) {
     );
   }
 
+  // =====================
+  // CHECK BALANCE
+  // =====================
+
   if (
     Number(sender.balance) <
     validAmount
@@ -233,10 +273,22 @@ async function transfer(userId, data) {
     );
   }
 
+  // =====================
+  // FIND RECEIVER
+  // ACCOUNT ID OR ACCOUNT NUMBER
+  // =====================
+
   const receiver =
-    await prisma.account.findUnique({
+    await prisma.account.findFirst({
       where: {
-        id: toAccountId,
+        OR: [
+          {
+            id: toAccountId,
+          },
+          {
+            accountNumber: toAccountId,
+          },
+        ],
       },
     });
 
@@ -246,12 +298,26 @@ async function transfer(userId, data) {
     );
   }
 
+  // =====================
+  // SAME ACCOUNT SAFETY
+  // =====================
+
+  if (sender.id === receiver.id) {
+    throw ApiError.badRequest(
+      "Cannot transfer to the same account"
+    );
+  }
+
+  // =====================
+  // ATOMIC TRANSFER
+  // =====================
+
   return await prisma.$transaction(
     async (tx) => {
       const updatedSender =
         await tx.account.update({
           where: {
-            id: fromAccountId,
+            id: sender.id,
           },
           data: {
             balance: {
@@ -263,7 +329,7 @@ async function transfer(userId, data) {
       const updatedReceiver =
         await tx.account.update({
           where: {
-            id: toAccountId,
+            id: receiver.id,
           },
           data: {
             balance: {
@@ -271,6 +337,10 @@ async function transfer(userId, data) {
             },
           },
         });
+
+      // =====================
+      // TRANSACTION RECORD
+      // =====================
 
       await tx.transaction.create({
         data: {
@@ -281,9 +351,37 @@ async function transfer(userId, data) {
           balanceAfter:
             updatedSender.balance,
           sourceAccountId:
-            fromAccountId,
+            sender.id,
           destinationAccountId:
-            toAccountId,
+            receiver.id,
+        },
+      });
+
+      // =====================
+      // SENDER NOTIFICATION
+      // =====================
+
+      await tx.notification.create({
+        data: {
+          userId,
+          title: "Transfer Successful",
+          message: `₹${validAmount} has been transferred successfully.`,
+          type: "TRANSACTION",
+          read: false,
+        },
+      });
+
+      // =====================
+      // RECEIVER NOTIFICATION
+      // =====================
+
+      await tx.notification.create({
+        data: {
+          userId: receiver.userId,
+          title: "Money Received",
+          message: `₹${validAmount} has been received in your account.`,
+          type: "TRANSACTION",
+          read: false,
         },
       });
 
@@ -294,6 +392,8 @@ async function transfer(userId, data) {
     }
   );
 }
+
+
 
 // =====================
 // GET TRANSACTIONS
