@@ -2,26 +2,32 @@ const express = require("express");
 
 const router = express.Router();
 
+// =====================================
+// MIDDLEWARE
+// =====================================
 
 const {
-  authenticate
+  authenticate,
 } = require("../middlewares/auth.middleware");
 
+// =====================================
+// CONTROLLERS
+// =====================================
 
 const {
   getProfileController,
-  updateProfileController
+  updateProfileController,
+  getSecurityOverviewController,
 } = require("../controllers/user.controller");
-
-
-
 
 // =====================================
 // USER PROFILE ROUTES
 // =====================================
 
-
+// -------------------------------------
 // GET PROFILE
+// GET /api/users/profile
+// -------------------------------------
 
 router.get(
   "/profile",
@@ -29,9 +35,10 @@ router.get(
   getProfileController
 );
 
-
-
+// -------------------------------------
 // UPDATE PROFILE
+// PUT /api/users/profile
+// -------------------------------------
 
 router.put(
   "/profile",
@@ -39,8 +46,23 @@ router.put(
   updateProfileController
 );
 
+// =====================================
+// SECURITY OVERVIEW
+// =====================================
 
+// -------------------------------------
+// GET SECURITY OVERVIEW
+// GET /api/users/security
+// -------------------------------------
 
+router.get(
+  "/security",
+  authenticate,
+  getSecurityOverviewController
+);
 
+// =====================================
+// EXPORT
+// =====================================
 
 module.exports = router;

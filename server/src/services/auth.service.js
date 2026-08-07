@@ -2,12 +2,12 @@ const bcrypt = require("bcryptjs");
 const crypto = require("crypto");
 const prisma = require("../config/prisma");
 
-const {
-hashToken,
-} = require("../utils/jwt.util");
+const { sendEmail } = require("./email.service");
+
+const { hashToken } = require("../utils/jwt.util");
 
 const {
-JWT_REFRESH_EXPIRY_DAYS,
+  JWT_REFRESH_EXPIRY_DAYS,
 } = require("../config/env");
 
 // ==============================
@@ -15,62 +15,50 @@ JWT_REFRESH_EXPIRY_DAYS,
 // ==============================
 
 async function signup(data) {
-if (!data) {
-throw new Error("Signup data missing");
-}
+  if (!data) {
+    throw new Error("Signup data missing");
+  }
 
-const {
-name,
-email,
-password,
-} = data;
+  const { name, email, password } = data;
 
-if (!name || !email || !password) {
-throw new Error("All fields are required");
-}
+  if (!name || !email || !password) {
+    throw new Error("All fields are required");
+  }
 
-if (password.length < 8) {
-throw new Error(
-"Password must be at least 8 characters"
-);
-}
+  if (password.length < 8) {
+    throw new Error("Password must be at least 8 characters");
+  }
 
-const normalizedEmail =
-email.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
 
-const existingUser =
-await prisma.user.findUnique({
-where: {
-email: normalizedEmail,
-},
-});
+  const existingUser = await prisma.user.findUnique({
+    where: {
+      email: normalizedEmail,
+    },
+  });
 
-if (existingUser) {
-throw new Error(
-"User already exists"
-);
-}
+  if (existingUser) {
+    throw new Error("User already exists");
+  }
 
-const hashedPassword =
-await bcrypt.hash(password, 10);
+  const hashedPassword = await bcrypt.hash(password, 10);
 
-const user =
-await prisma.user.create({
-data: {
-name: name.trim(),
-email: normalizedEmail,
-password: hashedPassword,
-},
+  const user = await prisma.user.create({
+    data: {
+      name: name.trim(),
+      email: normalizedEmail,
+      password: hashedPassword,
+    },
 
-  select: {
-    id: true,
-    name: true,
-    email: true,
-    createdAt: true,
-  },
-});
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      createdAt: true,
+    },
+  });
 
-return user;
+  return user;
 }
 
 // ==============================
@@ -78,62 +66,49 @@ return user;
 // ==============================
 
 async function login(data) {
-if (!data) {
-throw new Error("Login data missing");
-}
+  if (!data) {
+    throw new Error("Login data missing");
+  }
 
-const {
-email,
-password,
-} = data;
+  const { email, password } = data;
 
-if (!email || !password) {
-throw new Error(
-"Email and password are required"
-);
-}
+  if (!email || !password) {
+    throw new Error("Email and password are required");
+  }
 
-const normalizedEmail =
-email.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
 
-const user =
-await prisma.user.findUnique({
-where: {
-email: normalizedEmail,
-},
-});
+  const user = await prisma.user.findUnique({
+    where: {
+      email: normalizedEmail,
+    },
+  });
 
-if (!user) {
-throw new Error(
-"Invalid email or password"
-);
-}
+  if (!user) {
+    throw new Error("Invalid email or password");
+  }
 
-// Google-only account
-if (!user.password) {
-throw new Error(
-"This account uses Google Login. Please continue with Google."
-);
-}
+  if (!user.password) {
+    throw new Error(
+      "This account uses Google Login. Please continue with Google."
+    );
+  }
 
-const passwordMatch =
-await bcrypt.compare(
-password,
-user.password
-);
+  const passwordMatch = await bcrypt.compare(
+    password,
+    user.password
+  );
 
-if (!passwordMatch) {
-throw new Error(
-"Invalid email or password"
-);
-}
+  if (!passwordMatch) {
+    throw new Error("Invalid email or password");
+  }
 
-return {
-id: user.id,
-name: user.name,
-email: user.email,
-createdAt: user.createdAt,
-};
+  return {
+    id: user.id,
+    name: user.name,
+    email: user.email,
+    createdAt: user.createdAt,
+  };
 }
 
 // ==============================
@@ -141,98 +116,78 @@ createdAt: user.createdAt,
 // ==============================
 
 async function findOrCreateGoogleUser(data) {
-if (!data) {
-throw new Error(
-"Google user data missing"
-);
-}
+  if (!data) {
+    throw new Error("Google user data missing");
+  }
 
-const {
-googleId,
-name,
-email,
-} = data;
+  const { googleId, name, email } = data;
 
-if (!googleId || !email) {
-throw new Error(
-"Google ID and email are required"
-);
-}
+  if (!googleId || !email) {
+    throw new Error("Google ID and email are required");
+  }
 
-const normalizedEmail =
-email.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
 
-// Check Google ID first
-let user =
-await prisma.user.findUnique({
-where: {
-googleId,
-},
-});
-
-if (user) {
-return {
-id: user.id,
-name: user.name,
-email: user.email,
-createdAt: user.createdAt,
-};
-}
-
-// Check existing email
-user =
-await prisma.user.findUnique({
-where: {
-email: normalizedEmail,
-},
-});
-
-if (user) {
-// Link Google account with existing account
-user =
-await prisma.user.update({
-where: {
-id: user.id,
-},
-
-    data: {
+  let user = await prisma.user.findUnique({
+    where: {
       googleId,
     },
   });
 
-return {
-  id: user.id,
-  name: user.name,
-  email: user.email,
-  createdAt: user.createdAt,
-};
+  if (user) {
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    };
+  }
 
-}
+  user = await prisma.user.findUnique({
+    where: {
+      email: normalizedEmail,
+    },
+  });
 
-// Create new Google user
-user =
-await prisma.user.create({
-data: {
-name:
-name?.trim() ||
-normalizedEmail.split("@")[0],
+  if (user) {
+    user = await prisma.user.update({
+      where: {
+        id: user.id,
+      },
 
-    email: normalizedEmail,
+      data: {
+        googleId,
+      },
+    });
 
-    password: null,
+    return {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+      createdAt: user.createdAt,
+    };
+  }
 
-    googleId,
-  },
+  user = await prisma.user.create({
+    data: {
+      name:
+        name?.trim() ||
+        normalizedEmail.split("@")[0],
 
-  select: {
-    id: true,
-    name: true,
-    email: true,
-    createdAt: true,
-  },
-});
+      email: normalizedEmail,
+      password: null,
+      googleId,
+    },
 
-return user;
+    select: {
+      id: true,
+      name: true,
+      email: true,
+      createdAt: true,
+    },
+  });
+
+  return user;
 }
 
 // ==============================
@@ -240,189 +195,199 @@ return user;
 // ==============================
 
 async function createPasswordResetToken(email) {
-if (!email) {
-throw new Error(
-"Email is required"
-);
-}
+  if (!email) {
+    throw new Error("Email is required");
+  }
 
-const normalizedEmail =
-email.trim().toLowerCase();
+  const normalizedEmail = email.trim().toLowerCase();
 
-const user =
-await prisma.user.findUnique({
-where: {
-email: normalizedEmail,
-},
-});
+  const user = await prisma.user.findUnique({
+    where: {
+      email: normalizedEmail,
+    },
+  });
 
-/*
+  if (!user) {
+    return null;
+  }
 
-Do not reveal whether the email
-exists at controller level.
+  await prisma.passwordResetToken.deleteMany({
+    where: {
+      userId: user.id,
+    },
+  });
 
+  const rawToken = crypto.randomBytes(32).toString("hex");
 
-Returning null allows the controller
-to send the same response for both
-existing and non-existing emails.
-*/
-if (!user) {
-return null;
-}
+  const tokenHash = hashToken(rawToken);
 
-// Remove old reset tokens
-await prisma.passwordResetToken.deleteMany({
-where: {
-userId: user.id,
-},
-});
+  const expiresAt = new Date(
+    Date.now() + 15 * 60 * 1000
+  );
 
-// Generate secure random token
-const rawToken =
-crypto.randomBytes(32).toString("hex");
+  await prisma.passwordResetToken.create({
+    data: {
+      tokenHash,
+      userId: user.id,
+      expiresAt,
+    },
+  });
 
-// Store only hash in database
-const tokenHash =
-hashToken(rawToken);
+  // Frontend route is /reset-password/:token
+  const resetUrl =
+    `http://localhost:5173/reset-password/${rawToken}`;
 
-// Token valid for 15 minutes
-const expiresAt =
-new Date(
-Date.now() + 15 * 60 * 1000
-);
+  await sendEmail({
+    to: user.email,
 
-await prisma.passwordResetToken.create({
-data: {
-tokenHash,
-userId: user.id,
-expiresAt,
-},
-});
+    subject: "SmartBank AI - Password Reset",
 
-return {
-user: {
-id: user.id,
-name: user.name,
-email: user.email,
-},
+    text: `Hello ${user.name || "User"},
 
-token: rawToken,
+We received a request to reset your SmartBank AI password.
 
-expiresAt,
+Use the following link to reset your password:
 
-};
+${resetUrl}
+
+This link will expire in 15 minutes.
+
+If you did not request a password reset, you can safely ignore this email.
+
+SmartBank AI`,
+
+    html: `
+      <h2>SmartBank AI</h2>
+
+      <p>Hello ${user.name || "User"},</p>
+
+      <p>
+        We received a request to reset your
+        SmartBank AI password.
+      </p>
+
+      <p>
+        <a href="${resetUrl}">
+          Reset Your Password
+        </a>
+      </p>
+
+      <p>
+        This link will expire in
+        <strong>15 minutes</strong>.
+      </p>
+
+      <p>
+        If you did not request a password reset,
+        you can safely ignore this email.
+      </p>
+
+      <p>SmartBank AI</p>
+    `,
+  });
+
+  return {
+    user: {
+      id: user.id,
+      name: user.name,
+      email: user.email,
+    },
+
+    token: rawToken,
+    expiresAt,
+  };
 }
 
 // ==============================
 // RESET PASSWORD
 // ==============================
 
-async function resetPassword(
-token,
-newPassword
-) {
-if (!token) {
-throw new Error(
-"Password reset token is required"
-);
-}
+async function resetPassword(token, newPassword) {
+  if (!token) {
+    throw new Error("Password reset token is required");
+  }
 
-if (!newPassword) {
-throw new Error(
-"New password is required"
-);
-}
+  if (!newPassword) {
+    throw new Error("New password is required");
+  }
 
-if (newPassword.length < 8) {
-throw new Error(
-"Password must be at least 8 characters"
-);
-}
+  if (newPassword.length < 8) {
+    throw new Error("Password must be at least 8 characters");
+  }
 
-const tokenHash =
-hashToken(token);
+  const tokenHash = hashToken(token);
 
-const resetToken =
-await prisma.passwordResetToken.findUnique({
-where: {
-tokenHash,
-},
+  const resetToken =
+    await prisma.passwordResetToken.findUnique({
+      where: {
+        tokenHash,
+      },
 
-  include: {
-    user: true,
-  },
-});
+      include: {
+        user: true,
+      },
+    });
 
-if (!resetToken) {
-throw new Error(
-"Invalid or expired password reset token"
-);
-}
+  if (!resetToken) {
+    throw new Error(
+      "Invalid or expired password reset token"
+    );
+  }
 
-if (resetToken.usedAt) {
-throw new Error(
-"Password reset token has already been used"
-);
-}
+  if (resetToken.usedAt) {
+    throw new Error(
+      "Password reset token has already been used"
+    );
+  }
 
-if (
-new Date() >
-resetToken.expiresAt
-) {
-await prisma.passwordResetToken.delete({
-where: {
-id: resetToken.id,
-},
-});
+  if (new Date() > resetToken.expiresAt) {
+    await prisma.passwordResetToken.delete({
+      where: {
+        id: resetToken.id,
+      },
+    });
 
-throw new Error(
-  "Password reset token has expired"
-);
+    throw new Error(
+      "Password reset token has expired"
+    );
+  }
 
-}
+  const hashedPassword = await bcrypt.hash(
+    newPassword,
+    10
+  );
 
-const hashedPassword =
-await bcrypt.hash(
-newPassword,
-10
-);
+  await prisma.$transaction([
+    prisma.user.update({
+      where: {
+        id: resetToken.userId,
+      },
 
-await prisma.$transaction([
-prisma.user.update({
-where: {
-id: resetToken.userId,
-},
+      data: {
+        password: hashedPassword,
+      },
+    }),
 
-  data: {
-    password: hashedPassword,
-  },
-}),
+    prisma.passwordResetToken.update({
+      where: {
+        id: resetToken.id,
+      },
 
-prisma.passwordResetToken.update({
-  where: {
-    id: resetToken.id,
-  },
+      data: {
+        usedAt: new Date(),
+      },
+    }),
 
-  data: {
-    usedAt: new Date(),
-  },
-}),
+    prisma.session.deleteMany({
+      where: {
+        userId: resetToken.userId,
+      },
+    }),
+  ]);
 
-/*
- * Password reset invalidates all
- * existing refresh sessions.
- */
-prisma.session.deleteMany({
-  where: {
-    userId: resetToken.userId,
-  },
-}),
-
-]);
-
-return {
-success: true,
-};
+  return {
+    success: true,
+  };
 }
 
 // ==============================
@@ -430,18 +395,17 @@ success: true,
 // ==============================
 
 function getRefreshExpiryDate() {
-const date = new Date();
+  const date = new Date();
 
-const expiryDays =
-Number(
-JWT_REFRESH_EXPIRY_DAYS || 7
-);
+  const expiryDays = Number(
+    JWT_REFRESH_EXPIRY_DAYS || 7
+  );
 
-date.setDate(
-date.getDate() + expiryDays
-);
+  date.setDate(
+    date.getDate() + expiryDays
+  );
 
-return date;
+  return date;
 }
 
 // ==============================
@@ -449,103 +413,85 @@ return date;
 // ==============================
 
 async function createSession(data) {
-if (!data) {
-throw new Error(
-"Session data missing"
-);
-}
+  if (!data) {
+    throw new Error("Session data missing");
+  }
 
-const {
-userId,
-refreshToken,
-ipAddress,
-userAgent,
-} = data;
+  const {
+    userId,
+    refreshToken,
+    ipAddress,
+    userAgent,
+  } = data;
 
-if (!userId || !refreshToken) {
-throw new Error(
-"Session information missing"
-);
-}
+  if (!userId || !refreshToken) {
+    throw new Error("Session information missing");
+  }
 
-return await prisma.session.create({
-data: {
-userId,
+  return await prisma.session.create({
+    data: {
+      userId,
 
-  refreshTokenHash:
-    hashToken(refreshToken),
+      refreshTokenHash:
+        hashToken(refreshToken),
 
-  ipAddress,
+      ipAddress,
+      userAgent,
 
-  userAgent,
-
-  expiresAt:
-    getRefreshExpiryDate(),
-},
-
-});
+      expiresAt:
+        getRefreshExpiryDate(),
+    },
+  });
 }
 
 // ==============================
 // FIND SESSION
 // ==============================
 
-async function findSessionByToken(
-refreshToken
-) {
-if (!refreshToken) {
-throw new Error(
-"Refresh token missing"
-);
-}
+async function findSessionByToken(refreshToken) {
+  if (!refreshToken) {
+    throw new Error("Refresh token missing");
+  }
 
-return await prisma.session.findUnique({
-where: {
-refreshTokenHash:
-hashToken(refreshToken),
-},
-});
+  return await prisma.session.findUnique({
+    where: {
+      refreshTokenHash:
+        hashToken(refreshToken),
+    },
+  });
 }
 
 // ==============================
 // DELETE SESSION
 // ==============================
 
-async function deleteSessionByToken(
-refreshToken
-) {
-if (!refreshToken) {
-throw new Error(
-"Refresh token missing"
-);
-}
+async function deleteSessionByToken(refreshToken) {
+  if (!refreshToken) {
+    throw new Error("Refresh token missing");
+  }
 
-await prisma.session.deleteMany({
-where: {
-refreshTokenHash:
-hashToken(refreshToken),
-},
-});
+  await prisma.session.deleteMany({
+    where: {
+      refreshTokenHash:
+        hashToken(refreshToken),
+    },
+  });
 }
 
 // ==============================
 // REVOKE ALL SESSIONS
 // ==============================
 
-async function revokeAllSessionsForUser(
-userId
-) {
-if (!userId) {
-throw new Error(
-"User id missing"
-);
-}
+async function revokeAllSessionsForUser(userId) {
+  if (!userId) {
+    throw new Error("User id missing");
+  }
 
-await prisma.session.deleteMany({
-where: {
-userId,
-},
-});
+  await prisma.session.deleteMany({
+    where: {
+      userId,
+    },
+  });
 }
 
 // ==============================
@@ -553,16 +499,17 @@ userId,
 // ==============================
 
 module.exports = {
-signup,
-login,
+  signup,
+  login,
 
-findOrCreateGoogleUser,
+  findOrCreateGoogleUser,
 
-createPasswordResetToken,
-resetPassword,
+  createPasswordResetToken,
+  resetPassword,
 
-createSession,
-findSessionByToken,
-deleteSessionByToken,
-revokeAllSessionsForUser,
+  createSession,
+  findSessionByToken,
+  deleteSessionByToken,
+  revokeAllSessionsForUser,
 };
+
